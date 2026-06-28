@@ -36,7 +36,7 @@ export default {
         // Landing fonts
         sans: ["Geist", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["Geist Mono", "ui-monospace", "monospace"],
-        display: ["Cormorant Garamond", "Orbitron", "Space Grotesk", "sans-serif"],
+        display: ["Geist", "ui-sans-serif", "system-ui", "sans-serif"],
         body: ["DM Sans", "Rajdhani", "Space Grotesk", "sans-serif"],
       },
       boxShadow: {

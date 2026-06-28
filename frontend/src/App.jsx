@@ -1,7 +1,5 @@
 import React from "react";
 import { BrowserRouter } from "react-router-dom";
-import ConsoleApp from "./components/ConsoleApp";
-import DocsPage from "./components/DocsPage";
 import AuthCallback from "./components/AuthCallback";
 import AuthPage from "./components/AuthPage";
 import RefineryLanding from "./refinery/RefineryLanding";
@@ -47,8 +45,7 @@ export default function App() {
     );
   }
 
-  // Main domain: legacy routing, then landing page
-  if (path === "/console") return <ConsoleApp />;
-  if (path === "/docs" || path === "/developer") return <DocsPage />;
+  // Main domain: keep legacy entry points on the current Refinery surface.
+  if (path === "/console" || path === "/docs" || path === "/developer") return <RefineryLanding />;
   return <RefineryLanding />;
 }

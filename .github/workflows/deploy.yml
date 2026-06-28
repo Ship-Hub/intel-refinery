@@ -113,6 +113,24 @@ jobs:
               fi
             }
 
+            upsert_file_env() {
+              local file="$1"
+              local key="$2"
+              local value="$3"
+              local escaped
+              escaped="$(printf '%s' "$value" | sed 's/[\/&]/\\&/g')"
+              if [ ! -f "$file" ]; then
+                return 0
+              fi
+              sed -i 's/\r$//' "$file"
+              if grep -q "^${key}=" "$file"; then
+                sed -i "s/^${key}=.*/${key}=${escaped}/" "$file"
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> "$file"
+              fi
+              chmod 600 "$file"
+            }
+
             ensure_env_default() {
               local key="$1"
               local value="$2"
@@ -158,6 +176,13 @@ jobs:
                 chmod 600 "$SHARED_DIR/api.env"
               fi
             fi
+
+            PLATFORM_ADMIN_TOKEN_VALUE="$(grep -E '^PLATFORM_ADMIN_TOKEN=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2- | sed 's/\r$//' || true)"
+            if [ -n "$PLATFORM_ADMIN_TOKEN_VALUE" ]; then
+              upsert_file_env /var/www/intel-refinery-bot/shared/bot.env BACKEND_ADMIN_TOKEN "$PLATFORM_ADMIN_TOKEN_VALUE"
+              upsert_file_env /var/www/intel-refinery-bot/current/.env BACKEND_ADMIN_TOKEN "$PLATFORM_ADMIN_TOKEN_VALUE"
+            fi
+
             DB_NAME="$(grep -E '^DB_NAME=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
             DB_USER="$(grep -E '^DB_USER=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
             DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
@@ -418,6 +443,9 @@ jobs:
             cd "$APP_DIR/current"
             if command -v pm2 >/dev/null 2>&1; then
               pm2 startOrReload ecosystem.config.cjs --update-env
+              if pm2 describe intel-refinery-bot >/dev/null 2>&1; then
+                pm2 restart intel-refinery-bot --update-env
+              fi
               pm2 save
             else
               npm install -g pm2

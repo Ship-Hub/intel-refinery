@@ -21,7 +21,7 @@ export default function Hero() {
         <h1 className="m-0 mb-[22px] text-[clamp(34px,5.2vw,78px)] font-semibold leading-[1.02] tracking-[-0.025em]">
           <span className="hero-rise inline-block" style={{ animationDelay: '0.12s' }}>They say data is the new oil.</span>
           <br />
-          <span className="hero-rise inline-block bg-gradient-to-r from-cyan via-[#9fe9ff] to-gold bg-clip-text text-transparent" style={{ animationDelay: '.4s' }}>
+          <span className="hero-rise inline-block text-cyan" style={{ animationDelay: '.4s' }}>
             We refine it into understanding.
           </span>
         </h1>

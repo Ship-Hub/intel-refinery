@@ -26,7 +26,7 @@ function OAuthButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center justify-center gap-3 border border-white/10 px-4 py-3 font-mono text-sm uppercase tracking-[0.15em] text-white transition hover:border-neon/50 hover:bg-white/5 ${bgClass ?? ""}`}
+      className={`flex w-full items-center justify-center gap-3 rounded-lg border border-line bg-surface px-4 py-3 text-sm font-semibold text-ink-2 transition hover:border-cyan/35 hover:bg-cyan/[0.04] focus:outline-none focus:ring-2 focus:ring-cyan/25 ${bgClass ?? ""}`}
     >
       {logo}
       <span>{label}</span>
@@ -290,32 +290,32 @@ export default function AuthPanel({
     <HudPanel className="mx-auto max-w-xl">
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
-        <KeyRound className="h-5 w-5 text-neon" />
-        <div className="font-mono text-base uppercase tracking-[0.2em] text-glow">
-          Console Sign In
+        <KeyRound className="h-5 w-5 text-cyan" />
+        <div className="text-sm font-semibold uppercase tracking-[0.16em] text-ink-3">
+          Intel Refinery sign in
         </div>
       </div>
 
       {/* ── Telegram OTP ─────────────────────────────────────── */}
-      <div className="mb-2 rounded border border-neon/10 bg-neon/5 px-4 py-3">
+      <div className="mb-2 rounded-lg border border-cyan/15 bg-cyan/[0.04] px-4 py-3">
         <div className="mb-1 flex items-center gap-2">
-          <Send className="h-4 w-4 text-neon" />
-          <span className="font-mono text-xs uppercase tracking-[0.18em] text-neon">
+          <Send className="h-4 w-4 text-cyan" />
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan">
             Get your OTP via Telegram
           </span>
         </div>
-        <p className="font-body text-sm text-chrome">
+        <p className="text-sm leading-6 text-ink-4">
           Message{" "}
           <a
             href="https://t.me/intel_refinery_bot"
             target="_blank"
             rel="noreferrer"
-            className="text-neon underline-offset-2 hover:underline"
+            className="text-cyan underline-offset-2 hover:underline"
           >
             @intel_refinery_bot
           </a>{" "}
           on Telegram and send the{" "}
-          <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-white">
+          <span className="rounded bg-rail px-1.5 py-0.5 font-mono text-xs text-ink-2">
             /otp
           </span>{" "}
           command to receive your 6-digit code.
@@ -327,8 +327,8 @@ export default function AuthPanel({
         onSubmit={handleSubmit}
       >
         <label className="block">
-          <span className="mb-2 block font-mono text-sm uppercase tracking-[0.18em] text-chrome">
-            Telegram OTP
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-5">
+            Telegram login code
           </span>
           <input
             value={code}
@@ -340,12 +340,12 @@ export default function AuthPanel({
             inputMode="numeric"
             maxLength={6}
             placeholder="Enter 6-digit code"
-            className="w-full border border-neon/25 bg-black/30 px-4 py-3 font-mono text-lg tracking-[0.3em] text-white outline-none transition focus:border-neon"
+            className="w-full rounded-lg border border-line bg-bg px-4 py-3 font-mono text-lg tracking-[0.22em] text-ink-2 outline-none transition placeholder:text-ink-5 focus:border-cyan/50"
           />
         </label>
 
         {status && (
-          <div className="border border-red-400/30 bg-red-400/10 px-4 py-3 font-body text-base text-red-100">
+          <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-100">
             {status}
           </div>
         )}
@@ -359,19 +359,19 @@ export default function AuthPanel({
           }
         >
           {busy
-            ? "Verifying…"
-            : "Enter Console"}
+            ? "Verifying..."
+            : "Enter workspace"}
           <ArrowRight className="h-4 w-4" />
         </button>
       </form>
 
       {/* ── Divider ──────────────────────────────────────────── */}
       <div className="my-5 flex items-center gap-3">
-        <div className="h-px flex-1 bg-white/10" />
-        <div className="font-mono text-xs uppercase tracking-[0.18em] text-chrome">
+        <div className="h-px flex-1 bg-line" />
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-5">
           Or sign in with
         </div>
-        <div className="h-px flex-1 bg-white/10" />
+        <div className="h-px flex-1 bg-line" />
       </div>
 
       {/* ── Social buttons ───────────────────────────────────── */}

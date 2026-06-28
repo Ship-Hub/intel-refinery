@@ -52,12 +52,12 @@ export default function AuthCallback() {
   );
 
   return (
-    <div className="grid min-h-screen place-items-center bg-void px-6 text-center text-white">
+    <div className="grid min-h-screen place-items-center bg-bg px-6 text-center text-ink-2">
       <div>
-        <div className="font-mono text-sm uppercase tracking-[0.18em] text-glow">
+        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan">
           Completing sign in
         </div>
-        <p className="mt-3 font-body text-base text-chrome">
+        <p className="mt-3 text-sm text-ink-4">
           This window will close automatically.
         </p>
       </div>
