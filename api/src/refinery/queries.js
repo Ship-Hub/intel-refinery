@@ -157,7 +157,7 @@ const queries = {
   getModelVersions: async (projectId) => {
     const [rows] = await pool.query(
       `SELECT rmv.id, rmv.project_id, rmv.run_id, rmv.version_number, rmv.status, rmv.summary, rmv.created_at,
-              rr.trigger, rr.duration_ms, rr.total_estimated_cost
+              rr.\`trigger\` AS \`trigger\`, rr.duration_ms, rr.total_estimated_cost
        FROM refinery_model_versions rmv
        LEFT JOIN refinery_runs rr ON rr.id = rmv.run_id
        WHERE rmv.project_id = ?
@@ -169,7 +169,7 @@ const queries = {
 
   getModelVersionById: async (versionId) => {
     const [rows] = await pool.query(
-      `SELECT rmv.*, rr.trigger, rr.duration_ms, rr.total_estimated_cost, rr.stages_completed, rr.models_used
+      `SELECT rmv.*, rr.\`trigger\` AS \`trigger\`, rr.duration_ms, rr.total_estimated_cost, rr.stages_completed, rr.models_used
        FROM refinery_model_versions rmv
        LEFT JOIN refinery_runs rr ON rr.id = rmv.run_id
        WHERE rmv.id = ?`,
@@ -181,7 +181,7 @@ const queries = {
 
   getLatestModelVersion: async (projectId) => {
     const [rows] = await pool.query(
-      `SELECT rmv.*, rr.trigger, rr.duration_ms, rr.total_estimated_cost
+      `SELECT rmv.*, rr.\`trigger\` AS \`trigger\`, rr.duration_ms, rr.total_estimated_cost
        FROM refinery_model_versions rmv
        LEFT JOIN refinery_runs rr ON rr.id = rmv.run_id
        WHERE rmv.project_id = ? AND rmv.status = 'active'

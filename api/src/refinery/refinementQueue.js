@@ -12,7 +12,7 @@ const POLL_INTERVAL_MS = Number(process.env.REFINERY_QUEUE_POLL_MS || 3000);
 
 const claimNextRun = async () => {
   const [runs] = await db.promise().query(
-    `SELECT rr.id, rr.project_id AS projectId, rr.trigger,
+    `SELECT rr.id, rr.project_id AS projectId, rr.\`trigger\`,
             p.intent, rp.profile_key AS profileKey
      FROM refinery_runs rr
      JOIN projects p ON p.id = rr.project_id
@@ -64,13 +64,13 @@ const processNext = async () => {
 const enqueueRun = async ({ projectId, trigger = "api" }) => {
   const runId = uuidv4();
   await db.promise().query(
-    `INSERT INTO refinery_runs (id, project_id, trigger, status)
+    `INSERT INTO refinery_runs (id, project_id, \`trigger\`, status)
      VALUES (?, ?, ?, 'queued')`,
     [runId, projectId, trigger]
   );
 
   const [runs] = await db.promise().query(
-    `SELECT id, project_id AS projectId, trigger, status, created_at AS createdAt
+    `SELECT id, project_id AS projectId, \`trigger\`, status, created_at AS createdAt
      FROM refinery_runs
      WHERE id = ?
      LIMIT 1`,

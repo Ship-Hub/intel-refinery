@@ -857,7 +857,7 @@ const getRunStatus = async (req, res) => {
     }
 
     const [runs] = await db.promise().query(
-      `SELECT rr.id, rr.project_id, rr.trigger, rr.status, rr.stages_completed, rr.stages_failed,
+      `SELECT rr.id, rr.project_id, rr.\`trigger\`, rr.status, rr.stages_completed, rr.stages_failed,
               error_message, duration_ms, started_at, completed_at, created_at
               , latest.stage AS current_stage
        FROM refinery_runs
@@ -923,7 +923,7 @@ const streamRunStatus = async (req, res) => {
         params.push(req.params.runId);
       }
       const [runs] = await db.promise().query(
-        `SELECT rr.id, rr.project_id, rr.trigger, rr.status, rr.stages_completed, rr.stages_failed,
+        `SELECT rr.id, rr.project_id, rr.\`trigger\`, rr.status, rr.stages_completed, rr.stages_failed,
                 rr.error_message, rr.duration_ms, rr.started_at, rr.completed_at, rr.created_at
          FROM refinery_runs rr
          ${where}

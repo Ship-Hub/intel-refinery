@@ -191,7 +191,7 @@ const persist = {
   createRun: async (projectId, trigger, status = "running") => {
     const id = uuidv4();
     await pool.query(
-      `INSERT INTO refinery_runs (id, project_id, trigger, status, started_at)
+      `INSERT INTO refinery_runs (id, project_id, \`trigger\`, status, started_at)
        VALUES (?, ?, ?, ?, CASE WHEN ? = 'running' THEN NOW() ELSE NULL END)`,
       [id, projectId, trigger, status, status]
     );
