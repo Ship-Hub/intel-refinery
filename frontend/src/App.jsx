@@ -11,6 +11,9 @@ export default function App() {
   // Workspace app: deployed to app.domainname.com, or ?app=1 on localhost
   const params = new URLSearchParams(window.location.search);
   const isWorkspace = window.location.hostname.startsWith("app.") || params.has("app");
+  const path = window.location.pathname;
+
+  if (path === "/auth/callback") return <AuthCallback />;
 
   if (isWorkspace) {
     return (
@@ -21,10 +24,8 @@ export default function App() {
   }
 
   // Main domain: legacy routing, then landing page
-  const path = window.location.pathname;
   if (path === "/login") return <AuthPage mode="login" />;
   if (path === "/signup") return <AuthPage mode="signup" />;
-  if (path === "/auth/callback") return <AuthCallback />;
   if (path === "/console") return <ConsoleApp />;
   if (path === "/docs" || path === "/developer") return <DocsPage />;
   return <RefineryLanding />;

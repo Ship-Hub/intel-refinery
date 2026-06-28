@@ -245,6 +245,12 @@ const env =
             ""
         }),
 
+      AUTH_FRONTEND_BASE_URL:
+        str({
+          default:
+            ""
+        }),
+
       STRIPE_SECRET_KEY:
         str({
           default:

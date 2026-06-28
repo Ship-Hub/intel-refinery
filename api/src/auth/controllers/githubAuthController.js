@@ -46,6 +46,25 @@ const getApiBase = (req) => {
   return `${proto}://${host}`;
 };
 
+const getAuthFrontendBase = (req) => {
+  const configured =
+    env.AUTH_FRONTEND_BASE_URL ||
+    env.FRONTEND_BASE_URL ||
+    getApiBase(req);
+
+  try {
+    const url =
+      new URL(configured);
+    if (url.hostname.startsWith("app.")) {
+      url.hostname =
+        url.hostname.slice(4);
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return configured;
+  }
+};
+
 const githubRedirect =
   (req, res) => {
     if (!env.GITHUB_CLIENT_ID) {
@@ -79,8 +98,7 @@ const githubRedirect =
 const githubCallback =
   async (req, res) => {
     const frontendBase =
-      env.FRONTEND_BASE_URL ||
-      getApiBase(req);
+      getAuthFrontendBase(req);
 
     try {
       const {
