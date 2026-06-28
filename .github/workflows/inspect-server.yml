@@ -31,3 +31,9 @@ jobs:
             find /etc/letsencrypt/live -maxdepth 2 -type l -o -type f 2>/dev/null | sort || true
             echo "== pm2 =="
             pm2 list || true
+            echo "== intel refinery pm2 details =="
+            pm2 describe intel-refinery-api || true
+            pm2 describe intel-refinery-bot || true
+            echo "== intel refinery recent logs =="
+            pm2 logs intel-refinery-api --nostream --lines 20 || true
+            pm2 logs intel-refinery-bot --nostream --lines 20 || true
