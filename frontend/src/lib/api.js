@@ -24,6 +24,16 @@ export const clearSessionToken =
       SESSION_KEY
     );
 
+export const authHeaders =
+  (sessionToken = getStoredSessionToken()) => ({
+    ...(sessionToken
+      ? {
+          Authorization:
+            `Bearer ${sessionToken}`
+        }
+      : {})
+  });
+
 const request =
   async (
     path,
@@ -43,12 +53,7 @@ const request =
           headers: {
             "Content-Type":
               "application/json",
-            ...(sessionToken
-              ? {
-                  Authorization:
-                    `Bearer ${sessionToken}`
-                }
-              : {})
+            ...authHeaders(sessionToken)
           },
           ...(body
             ? {
@@ -93,12 +98,7 @@ const formRequest =
         {
           method,
           headers: {
-            ...(sessionToken
-              ? {
-                  Authorization:
-                    `Bearer ${sessionToken}`
-                }
-              : {})
+            ...authHeaders(sessionToken)
           },
           body:
             formData
@@ -428,5 +428,74 @@ export const api =
 
     v1RunStatus:
       (projectId, runId = "latest") =>
-        request(`/api/v1/projects/${projectId}/runs/${runId}`)
+        request(`/api/v1/projects/${projectId}/runs/${runId}`),
+
+    v1Artifacts:
+      (projectId, params) =>
+        request(`/api/v1/projects/${projectId}/artifacts?${new URLSearchParams(params || {})}`),
+
+    getV1Artifact:
+      (projectId, artifactId) =>
+        request(`/api/v1/projects/${projectId}/artifacts/${artifactId}`),
+
+    v1Connections:
+      (projectId, params) =>
+        request(`/api/v1/projects/${projectId}/connections?${new URLSearchParams(params || {})}`),
+
+    v1ModelStatus:
+      (projectId) =>
+        request(`/api/v1/projects/${projectId}/model`),
+
+    streamV1Run:
+      async (projectId, runId, { onEvent, signal } = {}) => {
+        const response =
+          await fetch(
+            `${API_BASE_URL}/api/v1/projects/${projectId}/runs/${runId || "latest"}/stream`,
+            {
+              headers:
+                authHeaders(),
+              signal
+            }
+          );
+
+        if (!response.ok || !response.body) {
+          throw new Error("Could not open run stream");
+        }
+
+        const reader =
+          response.body.getReader();
+        const decoder =
+          new TextDecoder();
+        let buffer =
+          "";
+
+        const flush = () => {
+          const frames =
+            buffer.split("\n\n");
+          buffer =
+            frames.pop() || "";
+
+          for (const frame of frames) {
+            const eventLine =
+              frame.split("\n").find((line) => line.startsWith("event:"));
+            const dataLine =
+              frame.split("\n").find((line) => line.startsWith("data:"));
+            if (!dataLine) continue;
+            const event =
+              eventLine ? eventLine.slice(6).trim() : "message";
+            const data =
+              JSON.parse(dataLine.slice(5).trim());
+            onEvent?.(event, data);
+          }
+        };
+
+        while (true) {
+          const { done, value } =
+            await reader.read();
+          if (done) break;
+          buffer +=
+            decoder.decode(value, { stream: true });
+          flush();
+        }
+      }
   };

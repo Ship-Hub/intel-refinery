@@ -84,6 +84,7 @@ const persist = {
     if (updates.confidence !== undefined) { fields.push("confidence = ?"); params.push(updates.confidence); }
     if (updates.importance !== undefined) { fields.push("importance = ?"); params.push(updates.importance); }
     if (updates.status !== undefined) { fields.push("status = ?"); params.push(updates.status); }
+    if (updates.metadata !== undefined) { fields.push("metadata = ?"); params.push(JSON.stringify(updates.metadata)); }
 
     if (fields.length === 0) return;
 
@@ -187,12 +188,12 @@ const persist = {
 
   // ── Refinery Runs ──────────────────────────────────────────────────────────
 
-  createRun: async (projectId, trigger) => {
+  createRun: async (projectId, trigger, status = "running") => {
     const id = uuidv4();
     await pool.query(
       `INSERT INTO refinery_runs (id, project_id, trigger, status, started_at)
-       VALUES (?, ?, ?, 'running', NOW())`,
-      [id, projectId, trigger]
+       VALUES (?, ?, ?, ?, CASE WHEN ? = 'running' THEN NOW() ELSE NULL END)`,
+      [id, projectId, trigger, status, status]
     );
     return id;
   },

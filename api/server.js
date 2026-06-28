@@ -30,6 +30,13 @@ const {
 );
 
 const {
+  startRefinementWorker,
+  stopRefinementWorker
+} = require(
+  "./src/refinery/refinementQueue"
+);
+
+const {
   requestId
 } = require(
   "./src/middleware/requestId"
@@ -293,7 +300,10 @@ app.use("/api/projects", refineryAuth, connectionRoutes);
 app.use("/api/projects", refineryAuth, viewRoutes);
 
 app.use(apiRateLimiter);
-app.use(apiKeyAuth);
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/v1")) return next();
+  return apiKeyAuth(req, res, next);
+});
 
 // ── V1 Developer API ───────────────────────────────────────────────────────
 // Authenticated via API key (x-api-key header) with per-key rate limiting
@@ -304,30 +314,45 @@ const { idempotency, idempotencyHandler } = require("./src/middleware/idempotenc
 
 const v1ApiAuth = async (req, res, next) => {
   const rawKey = req.headers["x-api-key"];
-  if (!rawKey) {
-    return res.status(401).json({ success: false, error: "API key required. Provide via x-api-key header." });
+  if (rawKey) {
+    try {
+      const keyPrefix = String(rawKey).slice(0, 16);
+      const [keys] = await dbRefinery.promise().query(
+        "SELECT k.id, k.account_id, k.api_key_hash, k.is_active FROM api_keys k WHERE k.key_prefix = ? AND k.revoked_at IS NULL LIMIT 10",
+        [keyPrefix]
+      );
+      for (const row of keys) {
+        if (row.is_active && await compareApiKey(rawKey, row.api_key_hash)) {
+          req.account = { id: row.account_id };
+          req.apiKey = { id: row.id, account_id: row.account_id };
+          await dbRefinery.promise().query(
+            "UPDATE api_keys SET requests_count = requests_count + 1, last_used_at = NOW() WHERE id = ?",
+            [row.id]
+          );
+          return next();
+        }
+      }
+    } catch (err) {
+      req.log?.warn?.({ event: "v1_api_auth_error", error: err.message });
+    }
   }
-  try {
-    const keyPrefix = String(rawKey).slice(0, 16);
-    const [keys] = await dbRefinery.promise().query(
-      "SELECT k.id, k.account_id, k.api_key_hash, k.is_active FROM api_keys k WHERE k.key_prefix = ? AND k.revoked_at IS NULL LIMIT 10",
-      [keyPrefix]
-    );
-    for (const row of keys) {
-      if (row.is_active && await compareApiKey(rawKey, row.api_key_hash)) {
-        req.account = { id: row.account_id };
-        req.apiKey = { id: row.id, account_id: row.account_id };
-        await dbRefinery.promise().query(
-          "UPDATE api_keys SET requests_count = requests_count + 1, last_used_at = NOW() WHERE id = ?",
-          [row.id]
-        );
+
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (token) {
+    try {
+      const session = await getSessionFromToken(token);
+      if (session) {
+        req.account = { id: session.account_id };
+        req.user = session;
         return next();
       }
+    } catch (err) {
+      req.log?.warn?.({ event: "v1_session_auth_error", error: err.message });
     }
-  } catch (err) {
-    req.log?.warn?.({ event: "v1_api_auth_error", error: err.message });
   }
-  return res.status(401).json({ success: false, error: "Invalid API key" });
+
+  return res.status(401).json({ success: false, error: "Authentication failed" });
 };
 
 app.use("/api/v1", requestId, requestTimer, v1ApiAuth, perKeyRateLimiter({ max: 60, windowMs: 60000 }), idempotency, v1Routes);
@@ -385,6 +410,8 @@ const gracefulShutdown =
       signal
 
     });
+
+    stopRefinementWorker();
 
     if (
       !serverInstance
@@ -461,6 +488,8 @@ const boot =
 
         }
       );
+
+    startRefinementWorker();
 
     process.on(
       "SIGTERM",

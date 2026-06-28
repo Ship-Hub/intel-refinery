@@ -32,6 +32,7 @@ const {
   updateSourceV1,
   getCyberReadiness,
   getArtifacts,
+  getArtifact,
   getConnections,
   getUsage,
   getApiKeys,
@@ -39,6 +40,7 @@ const {
   revokeApiKeyV1,
   triggerRefine,
   getRunStatus,
+  streamRunStatus,
   getModelStatus,
 } = require("../controllers/v1Controller");
 
@@ -78,9 +80,12 @@ router.get("/projects/:projectId/source-packages", listSourcePackagesV1);
 router.post("/projects/:projectId/source-packages", requireScope("write"), validateRequest(createSourcePackageV1Schema), idempotency, idempotencyHandler, createSourcePackageV1);
 router.get("/projects/:projectId/cyber/readiness", getCyberReadiness);
 router.get("/projects/:projectId/artifacts", cursorPagination(), getArtifacts);
+router.get("/projects/:projectId/artifacts/:artifactId", getArtifact);
 router.get("/projects/:projectId/connections", cursorPagination(), getConnections);
 router.get("/projects/:projectId/model", getModelStatus);
 router.post("/projects/:projectId/refine", idempotency, idempotencyHandler, ssrfProtection, triggerRefine);
+router.get("/projects/:projectId/runs/latest/stream", streamRunStatus);
+router.get("/projects/:projectId/runs/:runId/stream", streamRunStatus);
 router.get("/projects/:projectId/runs/latest", getRunStatus);
 router.get("/projects/:projectId/runs/:runId", getRunStatus);
 

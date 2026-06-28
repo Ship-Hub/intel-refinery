@@ -5,6 +5,105 @@ const { chunkText } = require("../ai/utils/chunkText");
 const { cleanText } = require("../ai/utils/cleanText");
 const pool = require("../config/db").promise();
 const persist = require("../refinery/persistence");
+const { appendRunEvent } = require("../refinery/runEvents");
+
+const parseJson = (value, fallback = null) => {
+  if (!value) return fallback;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const emitRunEvent = async (context, eventType, stage, message, payload = null) => {
+  if (!context.runId || !context.projectId) return;
+  await appendRunEvent({
+    runId: context.runId,
+    projectId: context.projectId,
+    eventType,
+    stage,
+    message,
+    payload,
+  }).catch(() => {});
+};
+
+const loadGraphIntoContext = async (context) => {
+  const [artifacts] = await pool.query(
+    "SELECT * FROM artifacts WHERE project_id = ? AND status = 'active'",
+    [context.projectId]
+  );
+  const [connections] = await pool.query(
+    "SELECT * FROM artifact_connections WHERE project_id = ? AND status = 'active'",
+    [context.projectId]
+  );
+
+  context.artifacts = artifacts.map((artifact) => ({
+    ...artifact,
+    content: parseJson(artifact.content, artifact.content),
+    metadata: parseJson(artifact.metadata, artifact.metadata),
+  }));
+  context.connections = connections.map((connection) => ({
+    ...connection,
+    metadata: parseJson(connection.metadata, connection.metadata),
+  }));
+};
+
+const normalizeEvidence = (evidence, artifactIds = []) =>
+  (evidence || [])
+    .map((item) => ({
+      ...item,
+      artifactId: item.artifactId || (
+        item.artifactIndex !== undefined ? artifactIds[item.artifactIndex] : null
+      ),
+    }))
+    .filter((item) => item.artifactId && item.sourceId);
+
+const inferredEvidenceForArtifacts = (artifacts, artifactIds = []) =>
+  (artifacts || []).flatMap((artifact, index) => {
+    const artifactId = artifactIds[index] || artifact.id;
+    const content = artifact.content || {};
+    const metadata = artifact.metadata || {};
+    const sourceIds = [
+      artifact.firstSeenSourceId,
+      content.sourceId,
+      metadata.sourceId,
+      ...(Array.isArray(content.sourceIds) ? content.sourceIds : []),
+      ...(Array.isArray(metadata.sourceIds) ? metadata.sourceIds : []),
+    ].filter(Boolean);
+
+    return [...new Set(sourceIds)].map((sourceId) => ({
+      artifactId,
+      sourceId,
+      quote: content.evidence || content.quote || metadata.evidence || null,
+      evidenceType: "supports",
+      confidence: artifact.confidence ?? 1,
+    }));
+  });
+
+const normalizeConnections = (connections, artifactIds = []) =>
+  (connections || [])
+    .map((connection) => ({
+      ...connection,
+      fromArtifactId: connection.fromArtifactId || (
+        connection.fromArtifactIndex !== undefined ? artifactIds[connection.fromArtifactIndex] : null
+      ),
+      toArtifactId: connection.toArtifactId || (
+        connection.toArtifactIndex !== undefined ? artifactIds[connection.toArtifactIndex] : null
+      ),
+    }))
+    .filter((connection) => connection.fromArtifactId && connection.toArtifactId);
+
+const normalizeConnectionEvidence = (evidence, connectionIds = []) =>
+  (evidence || [])
+    .map((item) => ({
+      ...item,
+      connectionId: item.connectionId || (
+        item.connectionIndex !== undefined ? connectionIds[item.connectionIndex] : null
+      ),
+    }))
+    .filter((item) => item.connectionId);
 
 const runNode = async (nodeId, context) => {
   const { projectId } = context;
@@ -22,31 +121,40 @@ const runNode = async (nodeId, context) => {
         const artifacts = result.output?.artifacts || [];
         const ids = await persist.saveArtifacts(projectId, artifacts, { taskId: context.currentTaskId });
         context.lastArtifactIds = ids;
+        context.artifactIdsByIndex = ids;
 
-        const evidence = result.output?.evidence || [];
+        const evidence = [
+          ...normalizeEvidence(result.output?.evidence || [], ids),
+          ...inferredEvidenceForArtifacts(artifacts, ids),
+        ];
         await persist.saveEvidence(projectId, evidence);
+        await loadGraphIntoContext(context);
       });
 
     case NODES.CONNECT:
       return runAiTask("connect", projectId, context, async (result) => {
-        // First pass: create connections referencing artifacts by placeholder IDs
-        const connections = result.output?.connections || [];
+        const artifactIds = (context.artifacts || []).map((artifact) => artifact.id);
+        const connections = normalizeConnections(result.output?.connections || [], artifactIds);
         const connIds = await persist.saveConnections(projectId, connections, { taskId: context.currentTaskId });
         context.lastConnectionIds = connIds;
 
-        const connEvidence = result.output?.connectionEvidence || [];
+        const connEvidence = normalizeConnectionEvidence(result.output?.connectionEvidence || [], connIds);
         await persist.saveConnectionEvidence(projectId, connEvidence);
 
         const newArtifacts = result.output?.artifacts || [];
-        await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
+        const newIds = await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
+        await persist.saveEvidence(projectId, inferredEvidenceForArtifacts(newArtifacts, newIds));
+        await loadGraphIntoContext(context);
       });
 
     case NODES.UNDERSTAND:
       return runAiTask("understand", projectId, context, async (result) => {
         const newArtifacts = result.output?.newArtifacts || [];
-        await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
+        const newIds = await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
+        await persist.saveEvidence(projectId, inferredEvidenceForArtifacts(newArtifacts, newIds));
 
-        const connections = result.output?.connections || [];
+        const artifactIds = [...(context.artifacts || []).map((artifact) => artifact.id), ...newIds];
+        const connections = normalizeConnections(result.output?.connections || [], artifactIds);
         await persist.saveConnections(projectId, connections, { taskId: context.currentTaskId });
 
         const merges = result.output?.mergeSuggestions || [];
@@ -60,20 +168,24 @@ const runNode = async (nodeId, context) => {
         for (const u of updates) {
           await persist.updateArtifact(u.artifactId, u.updates);
         }
+        await loadGraphIntoContext(context);
       });
 
     case NODES.REFLECT:
       return runAiTask("reflect", projectId, context, async (result) => {
         const newArtifacts = result.output?.newArtifacts || [];
-        await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
+        const newIds = await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
+        await persist.saveEvidence(projectId, inferredEvidenceForArtifacts(newArtifacts, newIds));
 
-        const connections = result.output?.connections || [];
+        const artifactIds = [...(context.artifacts || []).map((artifact) => artifact.id), ...newIds];
+        const connections = normalizeConnections(result.output?.connections || [], artifactIds);
         await persist.saveConnections(projectId, connections, { taskId: context.currentTaskId });
 
         const statusChanges = result.output?.statusChanges || [];
         for (const sc of statusChanges) {
           await persist.updateArtifact(sc.artifactId, { status: sc.status });
         }
+        await loadGraphIntoContext(context);
       });
 
     case NODES.BUILD_MODEL:
@@ -291,6 +403,8 @@ const processProject = async (projectId, options = {}) => {
   status.context.profileKey = options.profileKey || null;
   status.context.intent = options.intent || null;
 
+  await emitRunEvent(status.context, "run_processing", null, "Refinement pipeline started.");
+
   // Load sources
   try {
     const [sourceRows] = await pool.query(
@@ -315,12 +429,14 @@ const processProject = async (projectId, options = {}) => {
     if (status.context.sources.length === 0) {
       status.errors.push("No sources with extracted text found");
       await persist.updateRun(status.runId, { status: "failed", errorMessage: "No sources with extracted text found" });
+      await emitRunEvent(status.context, "run_failed", null, "No sources with extracted text found");
       await persist.updateProjectStatus(projectId, "failed");
       return status;
     }
   } catch (err) {
     status.errors.push(`Failed to load sources: ${err.message}`);
     await persist.updateRun(status.runId, { status: "failed", errorMessage: err.message });
+    await emitRunEvent(status.context, "run_failed", null, err.message);
     await persist.updateProjectStatus(projectId, "failed");
     return status;
   }
@@ -338,6 +454,7 @@ const processProject = async (projectId, options = {}) => {
 
   for (const nodeId of stages) {
     status.currentNode = nodeId;
+    await emitRunEvent(status.context, "stage_started", nodeId, `${nodeId} started`);
 
     try {
       const result = await runNode(nodeId, status.context);
@@ -350,6 +467,7 @@ const processProject = async (projectId, options = {}) => {
           stagesFailed: status.failedNodes,
           errorMessage: status.errors.join("; ")
         });
+        await emitRunEvent(status.context, "stage_failed", nodeId, result.error || `${nodeId} failed`);
         continue;
       }
 
@@ -372,6 +490,7 @@ const processProject = async (projectId, options = {}) => {
         modelsUsed: status.modelsUsed,
         totalCost: status.totalCost
       });
+      await emitRunEvent(status.context, "stage_completed", nodeId, `${nodeId} completed`, result.output || null);
     } catch (err) {
       status.errors.push(`${nodeId}: ${err.message}`);
       status.failedNodes.push(nodeId);
@@ -380,6 +499,7 @@ const processProject = async (projectId, options = {}) => {
         stagesFailed: status.failedNodes,
         errorMessage: status.errors.join("; ")
       });
+      await emitRunEvent(status.context, "stage_failed", nodeId, err.message);
     }
   }
 
@@ -414,6 +534,13 @@ const processProject = async (projectId, options = {}) => {
   });
 
   await persist.updateProjectStatus(projectId, hasErrors ? "failed" : "completed");
+  await emitRunEvent(
+    status.context,
+    hasErrors ? "run_failed" : "run_completed",
+    null,
+    hasErrors ? status.errors.join("; ") : "Refinement pipeline completed.",
+    { modelVersionId: status.context.refineryModelVersionId || null }
+  );
 
   status.finishedAt = new Date().toISOString();
   return status;

@@ -52,7 +52,7 @@ export default function Projects() {
             {projects.map((p) => (
               <button
                 key={p.id}
-                onClick={() => navigate(p.profileKey === "cyber" ? `/cyber/projects/${p.id}/workspace` : `/projects/${p.id}/refine`)}
+                onClick={() => navigate(p.profileKey === "cyber" ? `/cyber/projects/${p.id}/overview` : `/projects/${p.id}/refine`)}
                 className="flex items-center justify-between rounded-xl border border-line bg-surface px-5 py-4 text-left hover:bg-elevated transition-colors"
               >
                 <div>

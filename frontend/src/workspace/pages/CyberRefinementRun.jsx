@@ -36,7 +36,7 @@ export default function CyberRefinementRun() {
             Back to workspace
           </button>
           <button
-            onClick={() => navigate(`/cyber/projects/${id}/workspace`)}
+            onClick={() => navigate(`/cyber/projects/${id}/overview`)}
             className="rounded-md bg-blue-400 px-3 py-2 text-[12px] font-semibold text-bg transition hover:bg-blue-300"
           >
             View project

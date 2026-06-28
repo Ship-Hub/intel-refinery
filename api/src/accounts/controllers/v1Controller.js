@@ -11,8 +11,9 @@ const { calculateCyberReadiness } = require("../../refinery/readiness/cyberReadi
 const ingestionRegistry = require("../../ingestion/registry");
 const { generateFileHash } = require("../../security/generateFileHash");
 const { validateUpload } = require("../../security/validateUpload");
-const { processProject } = require("../../processing/pipeline");
 const persist = require("../../refinery/persistence");
+const { enqueueRun } = require("../../refinery/refinementQueue");
+const { listRunEvents } = require("../../refinery/runEvents");
 
 const getAccountId = (req) => req.account?.id || req.apiKey?.account_id;
 
@@ -60,14 +61,35 @@ const parseJsonField = (value, fallback) => {
   }
 };
 
+const normalizeArtifactResponse = (artifact) => ({
+  id: artifact.id,
+  projectId: artifact.project_id || artifact.projectId,
+  artifactType: artifact.artifact_type || artifact.artifactType,
+  title: artifact.title,
+  summary: artifact.summary || null,
+  content: parseJsonField(artifact.content, null),
+  metadata: parseJsonField(artifact.metadata, null),
+  confidence: artifact.confidence !== undefined && artifact.confidence !== null ? Number(artifact.confidence) : null,
+  importance: artifact.importance !== undefined && artifact.importance !== null ? Number(artifact.importance) : null,
+  status: artifact.status,
+  sourceCoverageCount: artifact.source_coverage_count || artifact.sourceCoverageCount || 0,
+  firstSeenSourceId: artifact.first_seen_source_id || artifact.firstSeenSourceId || null,
+  firstSeenSourceName: artifact.first_seen_source_name || artifact.firstSeenSourceName || null,
+  createdAt: artifact.created_at || artifact.createdAt || null,
+  updatedAt: artifact.updated_at || artifact.updatedAt || null,
+});
+
 const buildRunStatusResponse = (run, project = null) => {
   if (!run) return null;
   const completed = parseJsonField(run.stages_completed || run.stagesCompleted, []);
   const failed = parseJsonField(run.stages_failed || run.stagesFailed, []);
   const totalStages = 8;
   const isTerminal = run.status === "completed" || run.status === "failed";
+  const isQueued = run.status === "queued";
   const progress = isTerminal
     ? 100
+    : isQueued
+      ? 0
     : Math.min(95, Math.round(((completed.length + failed.length) / totalStages) * 100));
 
   return {
@@ -76,6 +98,7 @@ const buildRunStatusResponse = (run, project = null) => {
     trigger: run.trigger,
     status: run.status,
     progress,
+    currentStage: run.current_stage || run.currentStage || null,
     stagesCompleted: completed,
     stagesFailed: failed,
     errorMessage: run.error_message || run.errorMessage || null,
@@ -571,16 +594,81 @@ const getArtifacts = async (req, res) => {
     params.push(limit + 1);
     const [rows] = await db.promise().query(
       `SELECT a.id, a.project_id AS projectId, a.artifact_type AS artifactType, a.title,
-              a.summary, a.confidence, a.importance, a.status, a.created_at AS createdAt
+              a.summary, a.content, a.metadata, a.confidence, a.importance, a.status,
+              a.source_coverage_count AS sourceCoverageCount,
+              a.first_seen_source_id AS firstSeenSourceId,
+              s.display_name AS firstSeenSourceName,
+              a.created_at AS createdAt, a.updated_at AS updatedAt
        FROM artifacts a
        JOIN projects p ON p.id = a.project_id
+       LEFT JOIN sources s ON s.id = a.first_seen_source_id
        ${whereSql}
        ORDER BY a.created_at DESC, a.id DESC
        LIMIT ?`,
       params
     );
-    const result = buildPaginatedResponse(rows, limit, (last) => encodeCursor(last.createdAt, last.id));
+    const result = buildPaginatedResponse(rows.map(normalizeArtifactResponse), limit, (last) => encodeCursor(last.createdAt, last.id));
     return successResponse(res, result.items, { requestId: req.requestId, nextCursor: result.nextCursor, hasMore: result.hasMore });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const getArtifact = async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(
+      `SELECT a.*, s.display_name AS first_seen_source_name
+       FROM artifacts a
+       JOIN projects p ON p.id = a.project_id
+       LEFT JOIN sources s ON s.id = a.first_seen_source_id
+       WHERE a.id = ? AND a.project_id = ? AND p.account_id = ?
+       LIMIT 1`,
+      [req.params.artifactId, req.params.projectId, req.account.id]
+    );
+    if (!rows[0]) return errorResponse(res, 404, "Artifact not found", { requestId: req.requestId });
+
+    const [evidence] = await db.promise().query(
+      `SELECT ae.id, ae.source_id AS sourceId, ae.chunk_id AS chunkId, ae.quote,
+              ae.evidence_type AS evidenceType, ae.confidence, ae.metadata,
+              ae.created_at AS createdAt,
+              COALESCE(s.display_name, s.title, s.original_name, s.uri) AS sourceName,
+              s.source_category AS sourceCategory, s.source_type AS sourceType
+       FROM artifact_evidence ae
+       LEFT JOIN sources s ON s.id = ae.source_id
+       WHERE ae.artifact_id = ? AND ae.project_id = ?
+       ORDER BY ae.created_at DESC
+       LIMIT 20`,
+      [req.params.artifactId, req.params.projectId]
+    );
+
+    const [connections] = await db.promise().query(
+      `SELECT ac.id, ac.from_artifact_id AS fromArtifactId, ac.to_artifact_id AS toArtifactId,
+              ac.connection_type AS connectionType, ac.label, ac.explanation,
+              ac.confidence, ac.strength, ac.status,
+              af.title AS fromTitle, af.artifact_type AS fromArtifactType,
+              at.title AS toTitle, at.artifact_type AS toArtifactType
+       FROM artifact_connections ac
+       LEFT JOIN artifacts af ON af.id = ac.from_artifact_id
+       LEFT JOIN artifacts at ON at.id = ac.to_artifact_id
+       WHERE ac.project_id = ? AND (ac.from_artifact_id = ? OR ac.to_artifact_id = ?)
+       ORDER BY ac.confidence DESC, ac.created_at DESC
+       LIMIT 20`,
+      [req.params.projectId, req.params.artifactId, req.params.artifactId]
+    );
+
+    return successResponse(res, {
+      ...normalizeArtifactResponse(rows[0]),
+      evidence: evidence.map((item) => ({
+        ...item,
+        confidence: item.confidence !== undefined && item.confidence !== null ? Number(item.confidence) : null,
+        metadata: parseJsonField(item.metadata, null),
+      })),
+      connections: connections.map((item) => ({
+        ...item,
+        confidence: item.confidence !== undefined && item.confidence !== null ? Number(item.confidence) : null,
+        strength: item.strength !== undefined && item.strength !== null ? Number(item.strength) : null,
+      })),
+    }, { requestId: req.requestId });
   } catch (err) {
     return errorResponse(res, 500, err.message, { requestId: req.requestId });
   }
@@ -718,7 +806,7 @@ const triggerRefine = async (req, res) => {
     const [activeRuns] = await db.promise().query(
       `SELECT id, status, stages_completed, stages_failed, error_message, started_at, created_at
        FROM refinery_runs
-       WHERE project_id = ? AND status = 'running'
+       WHERE project_id = ? AND status IN ('queued', 'running')
        ORDER BY created_at DESC
        LIMIT 1`,
       [req.params.projectId]
@@ -727,34 +815,16 @@ const triggerRefine = async (req, res) => {
       return successResponse(res, buildRunStatusResponse(activeRuns[0], project), { requestId: req.requestId });
     }
 
-    const runId = await persist.createRun(req.params.projectId, "api");
-    setImmediate(async () => {
-      try {
-        await processProject(req.params.projectId, {
-          trigger: "api",
-          runId,
-          profileKey: project.profileKey,
-          intent: project.intent,
-        });
-      } catch (err) {
-        await persist.updateRun(runId, {
-          status: "failed",
-          errorMessage: err.message,
-          completedAt: new Date().toISOString(),
-        }).catch(() => {});
-        await persist.updateProjectStatus(req.params.projectId, "failed").catch(() => {});
-      }
-    });
-
+    const run = await enqueueRun({ projectId: req.params.projectId, trigger: "api" });
     return successResponse(res, {
-      id: runId,
-      runId,
+      id: run.id,
+      runId: run.id,
       projectId: req.params.projectId,
-      status: "running",
+      status: "queued",
       progress: 0,
       stagesCompleted: [],
       stagesFailed: [],
-      message: "Refinement pipeline started",
+      message: "Refinement pipeline queued",
     }, { requestId: req.requestId });
   } catch (err) {
     return errorResponse(res, 500, err.message, { requestId: req.requestId });
@@ -775,24 +845,123 @@ const getRunStatus = async (req, res) => {
     if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
 
     const params = [req.params.projectId];
-    let where = "WHERE project_id = ?";
+    let where = "WHERE rr.project_id = ?";
     if (req.params.runId && req.params.runId !== "latest") {
-      where += " AND id = ?";
+      where += " AND rr.id = ?";
       params.push(req.params.runId);
     }
 
     const [runs] = await db.promise().query(
-      `SELECT id, project_id, trigger, status, stages_completed, stages_failed,
+      `SELECT rr.id, rr.project_id, rr.trigger, rr.status, rr.stages_completed, rr.stages_failed,
               error_message, duration_ms, started_at, completed_at, created_at
+              , latest.stage AS current_stage
        FROM refinery_runs
+       LEFT JOIN (
+         SELECT e.run_id, e.stage
+         FROM refinery_run_events e
+         JOIN (
+           SELECT run_id, MAX(created_at) AS created_at
+           FROM refinery_run_events
+           WHERE stage IS NOT NULL
+           GROUP BY run_id
+         ) m ON m.run_id = e.run_id AND m.created_at = e.created_at
+       ) latest ON latest.run_id = rr.id
        ${where}
-       ORDER BY created_at DESC
+       ORDER BY rr.created_at DESC
        LIMIT 1`,
       params
     );
     if (!runs[0]) return errorResponse(res, 404, "Run not found", { requestId: req.requestId });
 
     return successResponse(res, buildRunStatusResponse(runs[0], project), { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const streamRunStatus = async (req, res) => {
+  try {
+    const [projects] = await db.promise().query(
+      `SELECT p.id, p.status, p.intent, rp.profile_key AS profileKey
+       FROM projects p
+       LEFT JOIN refinery_profiles rp ON rp.id = p.refinery_profile_id
+       WHERE p.id = ? AND p.account_id = ?
+       LIMIT 1`,
+      [req.params.projectId, req.account.id]
+    );
+    const project = projects[0];
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const send = (event, data) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    let closed = false;
+    let lastEventId = null;
+    req.on("close", () => {
+      closed = true;
+    });
+
+    const loadRun = async () => {
+      const params = [req.params.projectId];
+      let where = "WHERE rr.project_id = ?";
+      if (req.params.runId && req.params.runId !== "latest") {
+        where += " AND rr.id = ?";
+        params.push(req.params.runId);
+      }
+      const [runs] = await db.promise().query(
+        `SELECT rr.id, rr.project_id, rr.trigger, rr.status, rr.stages_completed, rr.stages_failed,
+                rr.error_message, rr.duration_ms, rr.started_at, rr.completed_at, rr.created_at
+         FROM refinery_runs rr
+         ${where}
+         ORDER BY rr.created_at DESC
+         LIMIT 1`,
+        params
+      );
+      return runs[0] || null;
+    };
+
+    const tick = async () => {
+      if (closed) return;
+      const run = await loadRun();
+      if (!run) {
+        send("error", { error: "Run not found" });
+        res.end();
+        return;
+      }
+
+      const events = await listRunEvents(run.id, { afterId: lastEventId, limit: 50 }).catch(() => []);
+      for (const event of events) {
+        lastEventId = event.id;
+        send("run-event", event);
+      }
+
+      const status = buildRunStatusResponse(run, project);
+      send("status", status);
+
+      if (status.status === "completed" || status.status === "failed") {
+        send("done", status);
+        res.end();
+        closed = true;
+      }
+    };
+
+    await tick();
+    const timer = setInterval(() => {
+      tick().catch((err) => {
+        if (!closed) send("error", { error: err.message });
+      });
+    }, 2000);
+
+    req.on("close", () => clearInterval(timer));
   } catch (err) {
     return errorResponse(res, 500, err.message, { requestId: req.requestId });
   }
@@ -834,6 +1003,7 @@ module.exports = {
   updateSourceV1,
   getCyberReadiness,
   getArtifacts,
+  getArtifact,
   getConnections,
   getUsage,
   getApiKeys,
@@ -841,5 +1011,6 @@ module.exports = {
   revokeApiKeyV1,
   triggerRefine,
   getRunStatus,
+  streamRunStatus,
   getModelStatus,
 };

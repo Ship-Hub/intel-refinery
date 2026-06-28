@@ -66,41 +66,71 @@ export function useCyberRefinementRun(projectId, runId) {
     ]);
   }, []);
 
+  const applyRun = useCallback((nextRun) => {
+    setRun(nextRun);
+    setError("");
+
+    for (const stage of nextRun.stagesCompleted || []) {
+      if (!seenStages.current.has(stage)) {
+        seenStages.current.add(stage);
+        appendLog(stage);
+      }
+    }
+    for (const stage of nextRun.stagesFailed || []) {
+      if (!seenStages.current.has(`${stage}:failed`)) {
+        seenStages.current.add(`${stage}:failed`);
+        appendLog(stage, "failed");
+      }
+    }
+  }, [appendLog]);
+
   useEffect(() => {
     if (!projectId || !runId) return undefined;
     let cancelled = false;
+    const controller = new AbortController();
 
     const poll = async () => {
       try {
         const nextRun = await api.v1RunStatus(projectId, runId);
         if (cancelled) return;
-        setRun(nextRun);
-        setError("");
-
-        for (const stage of nextRun.stagesCompleted || []) {
-          if (!seenStages.current.has(stage)) {
-            seenStages.current.add(stage);
-            appendLog(stage);
-          }
-        }
-        for (const stage of nextRun.stagesFailed || []) {
-          if (!seenStages.current.has(`${stage}:failed`)) {
-            seenStages.current.add(`${stage}:failed`);
-            appendLog(stage, "failed");
-          }
-        }
+        applyRun(nextRun);
       } catch (err) {
         if (!cancelled) setError(err.message || "Could not load run status");
       }
     };
 
-    poll();
-    const timer = window.setInterval(poll, 2500);
+    let timer = null;
+    api.streamV1Run(projectId, runId, {
+      signal: controller.signal,
+      onEvent: (event, data) => {
+        if (cancelled) return;
+        if (event === "status" || event === "done") {
+          applyRun(data);
+        }
+        if (event === "run-event" && data.stage) {
+          if (data.eventType === "stage_completed" && !seenStages.current.has(data.stage)) {
+            seenStages.current.add(data.stage);
+            appendLog(data.stage);
+          }
+          if (data.eventType === "stage_failed" && !seenStages.current.has(`${data.stage}:failed`)) {
+            seenStages.current.add(`${data.stage}:failed`);
+            appendLog(data.stage, "failed");
+          }
+        }
+      },
+    }).catch((err) => {
+      if (cancelled || err.name === "AbortError") return;
+      setError(err.message || "Run stream unavailable; polling status");
+      poll();
+      timer = window.setInterval(poll, 2500);
+    });
+
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      controller.abort();
+      if (timer) window.clearInterval(timer);
     };
-  }, [appendLog, projectId, runId]);
+  }, [appendLog, applyRun, projectId, runId]);
 
   const progress = run?.progress ?? 0;
   const completedCount = run?.stagesCompleted?.length || 0;
