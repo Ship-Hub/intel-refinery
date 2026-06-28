@@ -1,4 +1,5 @@
 import { Navigate, Routes, Route } from "react-router-dom";
+import AuthPage from "../components/AuthPage";
 import AppLayout from "./layout/AppLayout";
 import { WorkspaceAuthGate } from "./auth/WorkspaceAuth";
 import Dashboard from "./pages/Dashboard";
@@ -16,6 +17,9 @@ import Transform from "./pages/Transform";
 export default function WorkspaceRoutes() {
   return (
     <Routes>
+      <Route path="/login" element={<AuthPage mode="login" />} />
+      <Route path="/signup" element={<AuthPage mode="signup" />} />
+
       <Route element={<WorkspaceAuthGate />}>
         {/* Routes WITH sidebar */}
         <Route element={<AppLayout />}>
