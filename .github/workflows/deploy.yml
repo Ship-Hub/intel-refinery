@@ -94,9 +94,10 @@ jobs:
               sed -i 's|^FRONTEND_BASE_URL=.*|FRONTEND_BASE_URL=https://app.intelrefinery.site|' "$RELEASE_DIR/api/.env"
             fi
 
-            set -a
-            . "$RELEASE_DIR/api/.env"
-            set +a
+            sed -i 's/\r$//' "$RELEASE_DIR/api/.env"
+            DB_NAME="$(grep -E '^DB_NAME=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
+            DB_USER="$(grep -E '^DB_USER=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
+            DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
 
             mysql_exec() {
               if mysql -e "SELECT 1" >/dev/null 2>&1; then
