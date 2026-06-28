@@ -80,6 +80,54 @@ const env =
             120000
         }),
 
+      OPENROUTER_REFERER:
+        str({
+          default:
+            "https://intelrefinery.site"
+        }),
+
+      OPENROUTER_TITLE:
+        str({
+          default:
+            "Intel Refinery"
+        }),
+
+      OPENROUTER_OBSERVE_MODEL:
+        str({
+          default:
+            "deepseek/deepseek-v4-flash"
+        }),
+
+      OPENROUTER_CONNECT_MODEL:
+        str({
+          default:
+            "deepseek/deepseek-v4-pro"
+        }),
+
+      OPENROUTER_UNDERSTAND_MODEL:
+        str({
+          default:
+            "anthropic/claude-opus"
+        }),
+
+      OPENROUTER_REFLECT_MODEL:
+        str({
+          default:
+            "anthropic/claude-sonnet"
+        }),
+
+      OPENROUTER_VIEW_MODEL:
+        str({
+          default:
+            "deepseek/deepseek-v4-flash"
+        }),
+
+      OPENROUTER_QUALITY_MODEL:
+        str({
+          default:
+            "deepseek/deepseek-v4-flash"
+        }),
+
       GEMINI_API_KEY:
         str({
           default:
@@ -114,13 +162,14 @@ const env =
         str({
 
           choices: [
+            "openrouter",
             "gemini",
             "ollama",
             "groq"
           ],
 
           default:
-            "gemini"
+            "openrouter"
 
         }),
 
@@ -128,7 +177,7 @@ const env =
         str({
 
           default:
-            ""
+            "groq"
 
         }),
 
@@ -202,6 +251,12 @@ const env =
         }),
 
       PLATFORM_ADMIN_TOKEN:
+        str({
+          default:
+            ""
+        }),
+
+      BOT_BACKEND_API_KEY:
         str({
           default:
             ""

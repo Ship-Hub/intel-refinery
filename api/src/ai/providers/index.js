@@ -7,6 +7,11 @@ const ollama =
 const groq =
   require("./groq");
 
+const openrouter =
+  require(
+    "../../orchestrator/openRouterProvider"
+  );
+
 const appConfig =
   require(
     "../../config/appConfig"
@@ -41,6 +46,17 @@ const invokeProvider =
 
       return ollama.generate(
         prompt
+      );
+
+    }
+
+    if (
+      name === "openrouter"
+    ) {
+
+      return openrouter.generate(
+        prompt,
+        options
       );
 
     }
@@ -112,6 +128,11 @@ const runBoundedAttempt =
             : name === "groq"
 
               ? appConfig.ai.groqModel
+
+              : name === "openrouter"
+
+                ? options.model ||
+                  appConfig.ai.openrouterModel
 
               : options.model ||
                 appConfig.ai.model,
@@ -278,7 +299,9 @@ const askAI =
 
           {
             model:
-              name === "gemini"
+              name === "openrouter"
+                ? appConfig.ai.openrouterModel
+                : name === "gemini"
                 ? appConfig.ai.model
                 : undefined
           }
@@ -329,7 +352,9 @@ const askAI =
             timeoutMs,
             {
               model:
-                name === "gemini"
+                name === "openrouter"
+                  ? appConfig.ai.openrouterModel
+                  : name === "gemini"
                   ? appConfig.ai.model
                   : undefined
             }

@@ -48,6 +48,25 @@ const validateProviderEnv =
         (name) => name === "groq"
       );
 
+    const needsOpenRouter =
+      chain.some(
+        (name) => name === "openrouter"
+      );
+
+    if (
+      needsOpenRouter &&
+      !env.OPENROUTER_API_KEY
+    ) {
+
+      logger.warn({
+        event:
+          "provider_config_warning",
+        message:
+          "OPENROUTER_API_KEY is not set but OpenRouter is configured as a provider"
+      });
+
+    }
+
     if (
       needsGemini &&
       !env.GEMINI_API_KEY

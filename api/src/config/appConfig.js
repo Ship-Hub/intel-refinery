@@ -30,6 +30,7 @@ const appConfig = {
     ollamaModel: env.OLLAMA_MODEL,
     openrouterApiKey: env.OPENROUTER_API_KEY,
     openrouterTimeoutMs: env.OPENROUTER_TIMEOUT_MS || 120000,
+    openrouterModel: env.OPENROUTER_OBSERVE_MODEL,
 
     maxInputLength: 15000,
     maxChunkSize: 8000,

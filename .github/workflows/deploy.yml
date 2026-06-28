@@ -76,8 +76,13 @@ jobs:
             APP_DIR=/var/www/intel-refinery
             RELEASE_DIR="$APP_DIR/releases/${{ github.sha }}"
             SHARED_DIR="$APP_DIR/shared"
+            PREVIOUS_API_ENV=/tmp/intel-refinery-api.env.previous
 
             mkdir -p "$RELEASE_DIR" "$SHARED_DIR"
+            if [ -f "$SHARED_DIR/api.env" ]; then
+              cp "$SHARED_DIR/api.env" "$PREVIOUS_API_ENV"
+            fi
+
             tar -xzf /tmp/intel-refinery-release.tgz -C "$RELEASE_DIR"
 
             if [ -n "${API_ENV_FILE:-}" ]; then
@@ -95,10 +100,60 @@ jobs:
             fi
 
             sed -i 's/\r$//' "$RELEASE_DIR/api/.env"
-            if [ -f /var/www/intel-refinery-bot/shared/bot.env ] && ! grep -q '^BOT_BACKEND_API_KEY=' "$RELEASE_DIR/api/.env"; then
+
+            upsert_env() {
+              local key="$1"
+              local value="$2"
+              local escaped
+              escaped="$(printf '%s' "$value" | sed 's/[\/&]/\\&/g')"
+              if grep -q "^${key}=" "$RELEASE_DIR/api/.env"; then
+                sed -i "s/^${key}=.*/${key}=${escaped}/" "$RELEASE_DIR/api/.env"
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> "$RELEASE_DIR/api/.env"
+              fi
+            }
+
+            ensure_env_default() {
+              local key="$1"
+              local value="$2"
+              local current
+              current="$(grep -E "^${key}=" "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2- | sed 's/\r$//' || true)"
+              if [ -z "$current" ]; then
+                upsert_env "$key" "$value"
+              fi
+            }
+
+            preserve_previous_secret() {
+              local key="$1"
+              local current
+              local previous
+              current="$(grep -E "^${key}=" "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2- | sed 's/\r$//' || true)"
+              previous="$(grep -E "^${key}=" "$PREVIOUS_API_ENV" 2>/dev/null | tail -1 | cut -d= -f2- | sed 's/\r$//' || true)"
+              if [ -z "$current" ] && [ -n "$previous" ]; then
+                upsert_env "$key" "$previous"
+              fi
+            }
+
+            preserve_previous_secret OPENROUTER_API_KEY
+            ensure_env_default OPENROUTER_TIMEOUT_MS 120000
+            ensure_env_default OPENROUTER_REFERER https://intelrefinery.site
+            ensure_env_default "OPENROUTER_TITLE" "Intel Refinery"
+            ensure_env_default OPENROUTER_OBSERVE_MODEL deepseek/deepseek-v4-flash
+            ensure_env_default OPENROUTER_CONNECT_MODEL deepseek/deepseek-v4-pro
+            ensure_env_default OPENROUTER_UNDERSTAND_MODEL anthropic/claude-opus
+            ensure_env_default OPENROUTER_REFLECT_MODEL anthropic/claude-sonnet
+            ensure_env_default OPENROUTER_VIEW_MODEL deepseek/deepseek-v4-flash
+            ensure_env_default OPENROUTER_QUALITY_MODEL deepseek/deepseek-v4-flash
+            ensure_env_default AI_PROVIDER openrouter
+            ensure_env_default AI_FALLBACK_PROVIDER groq
+            cp "$RELEASE_DIR/api/.env" "$SHARED_DIR/api.env"
+            chmod 600 "$SHARED_DIR/api.env"
+
+            CURRENT_BOT_BACKEND_API_KEY="$(grep -E '^BOT_BACKEND_API_KEY=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2- | sed 's/\r$//' || true)"
+            if [ -f /var/www/intel-refinery-bot/shared/bot.env ] && [ -z "$CURRENT_BOT_BACKEND_API_KEY" ]; then
               BOT_BACKEND_API_KEY="$(grep -E '^BACKEND_API_KEY=' /var/www/intel-refinery-bot/shared/bot.env | tail -1 | cut -d= -f2- | sed 's/\r$//')"
               if [ -n "$BOT_BACKEND_API_KEY" ]; then
-                printf '\nBOT_BACKEND_API_KEY=%s\n' "$BOT_BACKEND_API_KEY" >> "$RELEASE_DIR/api/.env"
+                upsert_env BOT_BACKEND_API_KEY "$BOT_BACKEND_API_KEY"
                 cp "$RELEASE_DIR/api/.env" "$SHARED_DIR/api.env"
                 chmod 600 "$SHARED_DIR/api.env"
               fi
