@@ -7,7 +7,13 @@ const WorkspaceAuthContext = createContext(null);
 const getLoginTarget = (location) => {
   const redirect =
     `${location.pathname}${location.search}${location.hash}`;
-  return `/login?redirect=${encodeURIComponent(redirect)}`;
+  const params =
+    new URLSearchParams({
+      redirect,
+      from:
+        "workspace"
+    });
+  return `/login?${params.toString()}`;
 };
 
 function WorkspaceAuthLoading() {
