@@ -38,6 +38,8 @@ jobs:
             pm2 logs intel-refinery-api --nostream --lines 20 || true
             pm2 logs intel-refinery-bot --nostream --lines 20 || true
             echo "== bot api auth probe =="
+            grep -q 'getTrustedBotKey' /var/www/intel-refinery/current/api/src/middleware/apiKeyAuth.js && echo "deployed fallback code: yes" || echo "deployed fallback code: no"
+            node -e "const fs=require('fs'); const p='/var/www/intel-refinery-bot/shared/bot.env'; const c=fs.readFileSync(p,'utf8'); const l=c.replace(/\r\n/g,'\n').split('\n').find(x=>x.startsWith('BACKEND_API_KEY=')); console.log('api can read bot key file:', Boolean(l && l.slice('BACKEND_API_KEY='.length).trim().replace(/^['\"]|['\"]$/g,'')));"
             BOT_KEY="$(grep -E '^BACKEND_API_KEY=' /var/www/intel-refinery-bot/shared/bot.env | tail -1 | cut -d= -f2- | sed 's/\r$//')"
             API_PID="$(pm2 pid intel-refinery-api || true)"
             if [ -n "$API_PID" ] && [ -r "/proc/$API_PID/environ" ]; then
