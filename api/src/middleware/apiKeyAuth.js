@@ -18,14 +18,6 @@ const getTrustedBotKey =
   () => {
 
     if (
-      process.env.BOT_BACKEND_API_KEY
-    ) {
-
-      return process.env.BOT_BACKEND_API_KEY;
-
-    }
-
-    if (
       cachedTrustedBotKey !==
       null
     ) {
@@ -79,8 +71,9 @@ const getTrustedBotKey =
     } catch (error) {
 
       cachedTrustedBotKey =
+        process.env.BOT_BACKEND_API_KEY ||
         "";
-      return "";
+      return cachedTrustedBotKey;
 
     }
 
