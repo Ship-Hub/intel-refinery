@@ -36,7 +36,7 @@ const updateProjectV1Schema = z.object({
 const createSourceV1Schema = z.object({
   sourceType: z.enum(["text", "pdf", "image", "url", "audio"]),
   title: z.string().max(500).optional().nullable(),
-  uri: z.string().max(1000).optional().nullable(),
+  uri: z.string().url().max(8192).optional().nullable(),
   content: z.string().max(100000).optional().nullable(),
   sourceCategory: z.enum(cyberSourceCategories).optional().nullable(),
   sourcePackageId: z.string().uuid().optional().nullable(),

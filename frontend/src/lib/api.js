@@ -34,6 +34,29 @@ export const authHeaders =
       : {})
   });
 
+const formatApiError =
+  (payload) => {
+    if (!payload) return "Request failed";
+    if (typeof payload.error === "string") return payload.error;
+    if (Array.isArray(payload.error)) {
+      return payload.error
+        .map((item) => {
+          if (typeof item === "string") return item;
+          const path = Array.isArray(item.path) ? item.path.join(".") : item.path;
+          return [path, item.message].filter(Boolean).join(": ");
+        })
+        .filter(Boolean)
+        .join("; ") || "Request failed";
+    }
+    if (Array.isArray(payload.details)) {
+      return payload.details
+        .map((item) => [item.path, item.message].filter(Boolean).join(": "))
+        .filter(Boolean)
+        .join("; ") || "Request failed";
+    }
+    return "Request failed";
+  };
+
 const request =
   async (
     path,
@@ -73,8 +96,7 @@ const request =
       !payload.success
     ) {
       throw new Error(
-        payload.error ||
-          "Request failed"
+        formatApiError(payload)
       );
     }
 
@@ -112,8 +134,7 @@ const formRequest =
       !payload.success
     ) {
       throw new Error(
-        payload.error ||
-          "Request failed"
+        formatApiError(payload)
       );
     }
 

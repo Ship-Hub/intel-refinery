@@ -68,6 +68,19 @@ test("v1 source create schema accepts package and Cyber category fields", () => 
   assert.equal(parsed.displayName, "Vendor advisory");
 });
 
+test("v1 source create schema accepts long browser URLs", () => {
+  const longQuery = "a".repeat(1800);
+  const parsed = createSourceV1Schema.parse({
+    sourceType: "url",
+    uri: `https://www.google.com/search?q=${longQuery}`,
+    sourceCategory: "other",
+    displayName: "Search result",
+  });
+
+  assert.equal(parsed.sourceType, "url");
+  assert.equal(parsed.uri.includes(longQuery), true);
+});
+
 test("v1 source package schema accepts manual ingestion packages", () => {
   const parsed = createSourcePackageV1Schema.parse({
     name: "June scanner export",

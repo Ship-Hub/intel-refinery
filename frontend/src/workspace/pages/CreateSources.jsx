@@ -10,6 +10,31 @@ const MODES = [
 ];
 
 const makeId = () => crypto.randomUUID();
+const truncate = (value, max = 480) =>
+  value.length > max ? `${value.slice(0, max - 1)}...` : value;
+
+const normalizeUrl = (value) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
+
+const titleFromUrl = (value) => {
+  try {
+    const parsed = new URL(value);
+    const path = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "";
+    return truncate(`${parsed.hostname}${path}`);
+  } catch {
+    return truncate(value);
+  }
+};
 
 export default function CreateSources() {
   const [searchParams] = useSearchParams();
@@ -47,7 +72,7 @@ export default function CreateSources() {
   const addUrls = () => {
     const urls = urlInput
       .split(/\r?\n/)
-      .map((value) => value.trim())
+      .map(normalizeUrl)
       .filter(Boolean);
     if (urls.length === 0) return;
     setItems((prev) => [
@@ -55,7 +80,7 @@ export default function CreateSources() {
       ...urls.map((url) => ({
         id: makeId(),
         kind: "url",
-        title: url,
+        title: titleFromUrl(url),
         uri: url,
       })),
     ]);
@@ -95,8 +120,8 @@ export default function CreateSources() {
       return api.createV1UrlSource(projectId, {
         sourceType: "url",
         uri: item.uri,
-        title: item.title,
-        displayName: item.title,
+        title: truncate(item.title, 500),
+        displayName: truncate(item.title, 500),
         sourceCategory: "other",
       });
     }
