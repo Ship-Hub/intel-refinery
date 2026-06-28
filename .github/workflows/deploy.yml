@@ -401,5 +401,20 @@ jobs:
               pm2 save
             fi
 
-            curl -fsS http://127.0.0.1:5000/health >/dev/null
-            curl -fsS -H 'Host: intelrefinery.site' http://127.0.0.1/ >/dev/null
+            wait_for_http() {
+              local url="$1"
+              shift
+              local attempts=30
+              local delay=2
+              local i
+              for i in $(seq 1 "$attempts"); do
+                if curl -fsS "$@" "$url" >/dev/null; then
+                  return 0
+                fi
+                sleep "$delay"
+              done
+              curl -fsS "$@" "$url" >/dev/null
+            }
+
+            wait_for_http http://127.0.0.1:5000/health
+            wait_for_http http://127.0.0.1/ -H 'Host: intelrefinery.site'
