@@ -145,6 +145,98 @@ jobs:
             nginx -t
             systemctl reload nginx
 
+            CERT_DIR=/etc/letsencrypt/live/intelrefinery.site
+            if [ ! -f "$CERT_DIR/fullchain.pem" ] || [ ! -f "$CERT_DIR/privkey.pem" ]; then
+              if command -v certbot >/dev/null 2>&1; then
+                certbot --nginx -n --agree-tos --register-unsafely-without-email \
+                  -d intelrefinery.site \
+                  -d www.intelrefinery.site \
+                  -d app.intelrefinery.site \
+                  -d api.intelrefinery.site
+              else
+                apt-get update
+                apt-get install -y certbot python3-certbot-nginx
+                certbot --nginx -n --agree-tos --register-unsafely-without-email \
+                  -d intelrefinery.site \
+                  -d www.intelrefinery.site \
+                  -d app.intelrefinery.site \
+                  -d api.intelrefinery.site
+              fi
+            fi
+
+            if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
+              cat > /etc/nginx/sites-available/intel-refinery <<'NGINX_SSL'
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name intelrefinery.site www.intelrefinery.site app.intelrefinery.site api.intelrefinery.site;
+
+              location /.well-known/acme-challenge/ {
+                root /var/www/intel-refinery/current/frontend/dist;
+              }
+
+              location / {
+                return 301 https://$host$request_uri;
+              }
+            }
+
+            server {
+              listen 443 ssl;
+              listen [::]:443 ssl;
+              server_name intelrefinery.site www.intelrefinery.site;
+
+              ssl_certificate /etc/letsencrypt/live/intelrefinery.site/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/intelrefinery.site/privkey.pem;
+
+              root /var/www/intel-refinery/current/frontend/dist;
+              index index.html;
+
+              location / {
+                try_files $uri $uri/ /index.html;
+              }
+            }
+
+            server {
+              listen 443 ssl;
+              listen [::]:443 ssl;
+              server_name app.intelrefinery.site;
+
+              ssl_certificate /etc/letsencrypt/live/intelrefinery.site/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/intelrefinery.site/privkey.pem;
+
+              root /var/www/intel-refinery/current/frontend/dist;
+              index index.html;
+
+              location / {
+                try_files $uri $uri/ /index.html;
+              }
+            }
+
+            server {
+              listen 443 ssl;
+              listen [::]:443 ssl;
+              server_name api.intelrefinery.site;
+
+              ssl_certificate /etc/letsencrypt/live/intelrefinery.site/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/intelrefinery.site/privkey.pem;
+
+              location / {
+                proxy_pass http://127.0.0.1:5000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+              }
+            }
+            NGINX_SSL
+
+              nginx -t
+              systemctl reload nginx
+            fi
+
             cd "$APP_DIR/current"
             if command -v pm2 >/dev/null 2>&1; then
               pm2 startOrReload ecosystem.config.cjs --update-env
