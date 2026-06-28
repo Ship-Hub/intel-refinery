@@ -11,6 +11,8 @@ const { calculateCyberReadiness } = require("../../refinery/readiness/cyberReadi
 const ingestionRegistry = require("../../ingestion/registry");
 const { generateFileHash } = require("../../security/generateFileHash");
 const { validateUpload } = require("../../security/validateUpload");
+const { processProject } = require("../../processing/pipeline");
+const persist = require("../../refinery/persistence");
 
 const getAccountId = (req) => req.account?.id || req.apiKey?.account_id;
 
@@ -46,6 +48,48 @@ const inferSourceTypeFromFile = (file) => {
   if (mimeType.startsWith("text/") || mimeType === "text/markdown" || mimeType === "application/json") return "text";
   if (mimeType.startsWith("audio/")) return "audio";
   return "text";
+};
+
+const parseJsonField = (value, fallback) => {
+  if (Array.isArray(value) || (value && typeof value === "object")) return value;
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const buildRunStatusResponse = (run, project = null) => {
+  if (!run) return null;
+  const completed = parseJsonField(run.stages_completed || run.stagesCompleted, []);
+  const failed = parseJsonField(run.stages_failed || run.stagesFailed, []);
+  const totalStages = 8;
+  const isTerminal = run.status === "completed" || run.status === "failed";
+  const progress = isTerminal
+    ? 100
+    : Math.min(95, Math.round(((completed.length + failed.length) / totalStages) * 100));
+
+  return {
+    id: run.id,
+    projectId: run.project_id || run.projectId || project?.id || null,
+    trigger: run.trigger,
+    status: run.status,
+    progress,
+    stagesCompleted: completed,
+    stagesFailed: failed,
+    errorMessage: run.error_message || run.errorMessage || null,
+    durationMs: run.duration_ms || run.durationMs || null,
+    startedAt: run.started_at || run.startedAt || null,
+    completedAt: run.completed_at || run.completedAt || null,
+    createdAt: run.created_at || run.createdAt || null,
+    project: project ? {
+      id: project.id,
+      status: project.status,
+      profileKey: project.profileKey,
+      intent: project.intent,
+    } : null,
+  };
 };
 
 const getProjects = async (req, res) => {
@@ -660,23 +704,95 @@ const revokeApiKeyV1 = async (req, res) => {
 
 const triggerRefine = async (req, res) => {
   try {
-    const [project] = await db.promise().query(
-      "SELECT id FROM projects WHERE id = ? AND account_id = ? LIMIT 1",
+    const [projects] = await db.promise().query(
+      `SELECT p.id, p.status, p.intent, rp.profile_key AS profileKey
+       FROM projects p
+       LEFT JOIN refinery_profiles rp ON rp.id = p.refinery_profile_id
+       WHERE p.id = ? AND p.account_id = ?
+       LIMIT 1`,
       [req.params.projectId, req.account.id]
     );
-    if (!project[0]) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
-    const runId = crypto.randomUUID();
-    await db.promise().query(
-      `INSERT INTO refinery_runs (id, project_id, trigger, status, stages_completed, started_at, created_at)
-       VALUES (?, ?, 'api', 'running', '[]', NOW(), NOW())`,
-      [runId, req.params.projectId]
+    const project = projects[0];
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    const [activeRuns] = await db.promise().query(
+      `SELECT id, status, stages_completed, stages_failed, error_message, started_at, created_at
+       FROM refinery_runs
+       WHERE project_id = ? AND status = 'running'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [req.params.projectId]
     );
+    if (activeRuns[0]) {
+      return successResponse(res, buildRunStatusResponse(activeRuns[0], project), { requestId: req.requestId });
+    }
+
+    const runId = await persist.createRun(req.params.projectId, "api");
+    setImmediate(async () => {
+      try {
+        await processProject(req.params.projectId, {
+          trigger: "api",
+          runId,
+          profileKey: project.profileKey,
+          intent: project.intent,
+        });
+      } catch (err) {
+        await persist.updateRun(runId, {
+          status: "failed",
+          errorMessage: err.message,
+          completedAt: new Date().toISOString(),
+        }).catch(() => {});
+        await persist.updateProjectStatus(req.params.projectId, "failed").catch(() => {});
+      }
+    });
+
     return successResponse(res, {
+      id: runId,
       runId,
       projectId: req.params.projectId,
       status: "running",
-      message: "Refinement pipeline triggered",
+      progress: 0,
+      stagesCompleted: [],
+      stagesFailed: [],
+      message: "Refinement pipeline started",
     }, { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const getRunStatus = async (req, res) => {
+  try {
+    const [projects] = await db.promise().query(
+      `SELECT p.id, p.status, p.intent, rp.profile_key AS profileKey
+       FROM projects p
+       LEFT JOIN refinery_profiles rp ON rp.id = p.refinery_profile_id
+       WHERE p.id = ? AND p.account_id = ?
+       LIMIT 1`,
+      [req.params.projectId, req.account.id]
+    );
+    const project = projects[0];
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    const params = [req.params.projectId];
+    let where = "WHERE project_id = ?";
+    if (req.params.runId && req.params.runId !== "latest") {
+      where += " AND id = ?";
+      params.push(req.params.runId);
+    }
+
+    const [runs] = await db.promise().query(
+      `SELECT id, project_id, trigger, status, stages_completed, stages_failed,
+              error_message, duration_ms, started_at, completed_at, created_at
+       FROM refinery_runs
+       ${where}
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      params
+    );
+    if (!runs[0]) return errorResponse(res, 404, "Run not found", { requestId: req.requestId });
+
+    return successResponse(res, buildRunStatusResponse(runs[0], project), { requestId: req.requestId });
   } catch (err) {
     return errorResponse(res, 500, err.message, { requestId: req.requestId });
   }
@@ -724,5 +840,6 @@ module.exports = {
   createApiKeyV1,
   revokeApiKeyV1,
   triggerRefine,
+  getRunStatus,
   getModelStatus,
 };

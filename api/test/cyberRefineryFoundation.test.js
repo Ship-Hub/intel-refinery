@@ -8,6 +8,7 @@ const {
   updateSourceV1Schema,
 } = require("../src/accounts/validators/v1Schemas");
 const { calculateCyberReadiness } = require("../src/refinery/readiness/cyberReadinessService");
+const { resolveProtocolId } = require("../src/research/protocolResolver");
 
 test("v1 project schema accepts Cyber Refinery profile and intent", () => {
   const parsed = createProjectV1Schema.parse({
@@ -115,4 +116,19 @@ test("Cyber readiness accepts normalized included sources with content", () => {
   assert.equal(readiness.counts.readySources, 2);
   assert.equal(readiness.counts.categories, 2);
   assert.equal(readiness.blockingIssues.length, 0);
+});
+
+test("Cyber profile resolves Cyber protocol bundle ids", () => {
+  assert.equal(
+    resolveProtocolId("observe", { profileKey: "cyber" }),
+    "cyber/observation/source"
+  );
+  assert.equal(
+    resolveProtocolId("connect", { profileKey: "cyber" }),
+    "cyber/connection/artifact"
+  );
+  assert.equal(
+    resolveProtocolId("observe", { profileKey: "general" }),
+    "observation/source"
+  );
 });

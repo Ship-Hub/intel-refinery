@@ -177,6 +177,7 @@ export default function CyberProjectWorkspace() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceFile, setSourceFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [startingRun, setStartingRun] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -295,6 +296,18 @@ export default function CyberProjectWorkspace() {
     await reloadReadiness();
   };
 
+  const startRefinement = async () => {
+    setStartingRun(true);
+    setError("");
+    try {
+      const run = await api.startV1Refinement(id);
+      navigate(`/cyber/projects/${id}/refine?runId=${run.runId || run.id}`);
+    } catch (err) {
+      setError(err.message || "Could not start refinement");
+      setStartingRun(false);
+    }
+  };
+
   const canSubmit =
     sourceMode === "raw"
       ? sourceText.trim()
@@ -329,11 +342,11 @@ export default function CyberProjectWorkspace() {
             </p>
           </div>
           <button
-            disabled={!readiness?.isReady}
-            onClick={() => navigate(`/projects/${id}/refine`)}
+            disabled={!readiness?.isReady || startingRun}
+            onClick={startRefinement}
             className="rounded-lg bg-blue-400 px-5 py-3 text-[13px] font-semibold text-bg transition hover:bg-blue-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Start Refinement
+            {startingRun ? "Starting..." : "Start Refinement"}
           </button>
         </div>
 

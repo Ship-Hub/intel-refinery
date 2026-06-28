@@ -420,5 +420,13 @@ export const api =
 
     cyberReadiness:
       (projectId) =>
-        request(`/api/v1/projects/${projectId}/cyber/readiness`)
+        request(`/api/v1/projects/${projectId}/cyber/readiness`),
+
+    startV1Refinement:
+      (projectId) =>
+        request(`/api/v1/projects/${projectId}/refine`, { method: "POST" }),
+
+    v1RunStatus:
+      (projectId, runId = "latest") =>
+        request(`/api/v1/projects/${projectId}/runs/${runId}`)
   };

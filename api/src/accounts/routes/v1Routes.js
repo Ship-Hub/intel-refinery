@@ -38,6 +38,7 @@ const {
   createApiKeyV1,
   revokeApiKeyV1,
   triggerRefine,
+  getRunStatus,
   getModelStatus,
 } = require("../controllers/v1Controller");
 
@@ -80,6 +81,8 @@ router.get("/projects/:projectId/artifacts", cursorPagination(), getArtifacts);
 router.get("/projects/:projectId/connections", cursorPagination(), getConnections);
 router.get("/projects/:projectId/model", getModelStatus);
 router.post("/projects/:projectId/refine", idempotency, idempotencyHandler, ssrfProtection, triggerRefine);
+router.get("/projects/:projectId/runs/latest", getRunStatus);
+router.get("/projects/:projectId/runs/:runId", getRunStatus);
 
 router.get("/usage", getUsage);
 router.get("/api-keys", getApiKeys);

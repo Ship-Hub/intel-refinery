@@ -1,5 +1,6 @@
 const { register } = require("../registry");
 const research = require("../../research");
+const { resolveProtocolId } = require("../../research/protocolResolver");
 
 const execute = async (taskInput) => {
   const { projectId, modelVersion } = taskInput;
@@ -8,9 +9,11 @@ const execute = async (taskInput) => {
     return { success: false, error: "No model version provided", output: null };
   }
 
-  const result = await research.executeProtocol("presentation/view", {
+  const result = await research.executeProtocol(resolveProtocolId("generate_view", taskInput), {
     projectId,
-    modelVersion
+    modelVersion,
+    profileKey: taskInput.profileKey,
+    intent: taskInput.intent
   });
 
   if (!result.success) {

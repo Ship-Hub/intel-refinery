@@ -129,20 +129,26 @@ const buildTaskInput = (taskType, context) => {
     case "observe":
       return {
         projectId,
-        sourceChunks: sourceChunks || []
+        sourceChunks: sourceChunks || [],
+        profileKey: context.profileKey,
+        intent: context.intent
       };
 
     case "connect":
       return {
         projectId,
-        artifacts: context.artifacts || []
+        artifacts: context.artifacts || [],
+        profileKey: context.profileKey,
+        intent: context.intent
       };
 
     case "understand":
       return {
         projectId,
         artifacts: context.artifacts || [],
-        connections: context.connections || []
+        connections: context.connections || [],
+        profileKey: context.profileKey,
+        intent: context.intent
       };
 
     case "reflect":
@@ -150,7 +156,9 @@ const buildTaskInput = (taskType, context) => {
         projectId,
         artifacts: context.artifacts || [],
         connections: context.connections || [],
-        modelVersionId: context.refineryModelVersionId
+        modelVersionId: context.refineryModelVersionId,
+        profileKey: context.profileKey,
+        intent: context.intent
       };
 
     case "generate_view":
@@ -159,7 +167,9 @@ const buildTaskInput = (taskType, context) => {
         modelVersionId: context.refineryModelVersionId,
         artifacts: context.artifacts || [],
         connections: context.connections || [],
-        modelVersion: context.refineryModel
+        modelVersion: context.refineryModel,
+        profileKey: context.profileKey,
+        intent: context.intent
       };
 
     default:
@@ -274,22 +284,32 @@ const processProject = async (projectId, options = {}) => {
 
   await persist.updateProjectStatus(projectId, "processing");
 
-  // Create run
-  status.runId = await persist.createRun(projectId, options.trigger || "manual");
+  // Create or reuse run
+  status.runId = options.runId || await persist.createRun(projectId, options.trigger || "manual");
   status.context.runId = status.runId;
+  status.context.trigger = options.trigger || "manual";
+  status.context.profileKey = options.profileKey || null;
+  status.context.intent = options.intent || null;
 
   // Load sources
   try {
     const [sourceRows] = await pool.query(
-      `SELECT id, source_type, extracted_text, raw_text, metadata
-       FROM sources WHERE project_id = ? AND status IN ('normalized', 'pending', 'chunked')`,
+      `SELECT id, source_type, source_category, inclusion_state, extracted_text, raw_text, metadata
+       FROM sources
+       WHERE project_id = ?
+         AND status IN ('normalized', 'pending', 'chunked')
+         AND COALESCE(inclusion_state, 'included') = 'included'`,
       [projectId]
     );
 
     status.context.sources = sourceRows.map((r) => ({
       id: r.id,
       text: r.extracted_text || r.raw_text || "",
-      metadata: typeof r.metadata === "string" ? JSON.parse(r.metadata) : (r.metadata || {})
+      metadata: {
+        ...(typeof r.metadata === "string" ? JSON.parse(r.metadata) : (r.metadata || {})),
+        sourceType: r.source_type,
+        sourceCategory: r.source_category,
+      }
     }));
 
     if (status.context.sources.length === 0) {
@@ -325,6 +345,11 @@ const processProject = async (projectId, options = {}) => {
       if (!result.success) {
         status.errors.push(`${nodeId}: ${result.error}`);
         status.failedNodes.push(nodeId);
+        await persist.updateRun(status.runId, {
+          stagesCompleted: status.completedNodes,
+          stagesFailed: status.failedNodes,
+          errorMessage: status.errors.join("; ")
+        });
         continue;
       }
 
@@ -340,9 +365,21 @@ const processProject = async (projectId, options = {}) => {
       if (result.output) {
         Object.assign(status.context, result.output);
       }
+
+      await persist.updateRun(status.runId, {
+        stagesCompleted: status.completedNodes,
+        stagesFailed: status.failedNodes,
+        modelsUsed: status.modelsUsed,
+        totalCost: status.totalCost
+      });
     } catch (err) {
       status.errors.push(`${nodeId}: ${err.message}`);
       status.failedNodes.push(nodeId);
+      await persist.updateRun(status.runId, {
+        stagesCompleted: status.completedNodes,
+        stagesFailed: status.failedNodes,
+        errorMessage: status.errors.join("; ")
+      });
     }
   }
 

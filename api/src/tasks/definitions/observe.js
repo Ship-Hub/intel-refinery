@@ -1,5 +1,6 @@
 const { register } = require("../registry");
 const research = require("../../research");
+const { resolveProtocolId } = require("../../research/protocolResolver");
 
 const execute = async (taskInput) => {
   const { projectId, sourceChunks } = taskInput;
@@ -8,9 +9,11 @@ const execute = async (taskInput) => {
     return { success: false, error: "No source chunks provided", output: null };
   }
 
-  const result = await research.executeProtocol("observation/source", {
+  const result = await research.executeProtocol(resolveProtocolId("observe", taskInput), {
     projectId,
-    sourceChunks
+    sourceChunks,
+    profileKey: taskInput.profileKey,
+    intent: taskInput.intent
   });
 
   if (!result.success) {

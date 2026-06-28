@@ -1,5 +1,6 @@
 const { register } = require("../registry");
 const research = require("../../research");
+const { resolveProtocolId } = require("../../research/protocolResolver");
 
 const execute = async (taskInput) => {
   const { projectId, artifacts, connections } = taskInput;
@@ -8,10 +9,12 @@ const execute = async (taskInput) => {
     return { success: false, error: "No artifacts to understand", output: null };
   }
 
-  const result = await research.executeProtocol("understanding/model", {
+  const result = await research.executeProtocol(resolveProtocolId("understand", taskInput), {
     projectId,
     artifacts,
-    connections: connections || []
+    connections: connections || [],
+    profileKey: taskInput.profileKey,
+    intent: taskInput.intent
   });
 
   if (!result.success) {
