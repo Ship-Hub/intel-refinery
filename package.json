@@ -1,0 +1,16 @@
+{
+  "name": "intel-refinery-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Intel Refinery frontend and API monorepo",
+  "workspaces": [
+    "frontend",
+    "api"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace frontend",
+    "test": "npm run test --workspace api",
+    "start:api": "npm start --workspace api",
+    "dev:frontend": "npm run dev --workspace frontend"
+  }
+}

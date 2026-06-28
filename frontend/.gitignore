@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+vite.log
+vite-error.log
+dev.log
+.chrome-*/
+.DS_Store
+Thumbs.db

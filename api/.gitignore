@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Uploads
+uploads/
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build files
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
+
+# Cursor / VSCode
+.vscode/
+.cursor/
+
+# Coverage
+coverage/
+
+# Playwright
+playwright-report/
+test-results/

@@ -1,0 +1,75 @@
+/* refinery.css — the ONLY non-Tailwind CSS this feature needs.
+   Everything here is opacity/transform/filter — GPU-composited, never layout. */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+/* ---- Buttons ---- */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 13px 24px; border-radius: 10px;
+  background: #57D8FF; color: #06222C; font-weight: 600; font-size: 15px;
+  text-decoration: none; transition: transform .2s ease, box-shadow .2s ease;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(87,216,255,.42); }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 13px 22px; border-radius: 10px;
+  background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.12);
+  color: #E8ECF2; font-weight: 500; font-size: 15px; text-decoration: none;
+  transition: border-color .2s ease, background .2s ease;
+}
+.btn-ghost:hover { border-color: rgba(87,216,255,.4); background: rgba(87,216,255,.05); }
+
+/* ---- Sticky nav ---- */
+.nav {
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,0);
+  transition: background .4s ease, border-color .4s ease, padding .4s ease, backdrop-filter .4s ease;
+}
+.nav-scrolled {
+  background: rgba(9,12,17,.82);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border-bottom-color: rgba(255,255,255,.07);
+  padding-top: 13px; padding-bottom: 13px;
+}
+
+/* ---- Scroll reveal ---- */
+.reveal {
+  opacity: 0; transform: translateY(24px);
+  transition: opacity .6s cubic-bezier(.22,.61,.36,1), transform .6s cubic-bezier(.22,.61,.36,1);
+  will-change: opacity, transform;
+}
+.reveal.in { opacity: 1; transform: none; }
+
+/* ---- Hero entrance ---- */
+@keyframes refRise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+.hero-rise { opacity: 0; animation: refRise .75s cubic-bezier(.22,.61,.36,1) forwards; }
+
+/* ---- Misc small loops ---- */
+@keyframes refFloat { 0%,100% { opacity:.5; transform: translateY(2px); } 50% { opacity:1; transform: translateY(-2px); } }
+.float-soft { animation: refFloat 3.4s ease-in-out infinite; }
+@keyframes refDot { 0%,100% { opacity:.35; } 50% { opacity:1; } }
+.live-dot { animation: refDot 1.6s ease-in-out infinite; }
+@keyframes refLogIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+.log-row { animation: refLogIn .5s cubic-bezier(.22,.61,.36,1); }
+
+/* ---- Problem section: floating document thumbnails + nudging arrow ---- */
+@keyframes refFloatCard { 0%,100% { transform: translate(0,0); } 33% { transform: translate(2px,-5px); } 66% { transform: translate(-2px,3px); } }
+.float-card { animation-name: refFloatCard; animation-timing-function: ease-in-out; animation-iteration-count: infinite; will-change: transform; }
+@keyframes refArrow { 0%,100% { opacity: .55; transform: translate(-50%,-50%); } 50% { opacity: 1; transform: translate(-50%,-50%) translateX(4px); } }
+.arrow-nudge { animation: refArrow 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-rise, .float-soft, .live-dot, .log-row, .float-card, .arrow-nudge { animation: none !important; }
+  .reveal { opacity: 1 !important; transform: none !important; }
+}
+
+::selection { background: rgba(87,216,255,.28); color: #fff; }
+
+/* ---- Touch-friendly adjustments ---- */
+@media (hover: none) and (pointer: coarse) {
+  .btn-primary, .btn-ghost { min-height: 44px; }
+  nav a, nav button { min-height: 44px; display: inline-flex; align-items: center; }
+}

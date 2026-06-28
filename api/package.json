@@ -1,0 +1,41 @@
+{
+  "name": "intel-refinery",
+  "version": "1.0.0",
+  "description": "Intel Refinery — universal information refinement engine",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "smoke:payments": "node scripts/paymentProviderSmoke.js all",
+    "smoke:payments:stripe": "node scripts/paymentProviderSmoke.js stripe",
+    "smoke:payments:paystack": "node scripts/paymentProviderSmoke.js paystack",
+    "smoke:payments:coinbase": "node scripts/paymentProviderSmoke.js coinbase_commerce"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.16.1",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "envalid": "^8.1.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "google-auth-library": "^10.6.2",
+    "mime-types": "^3.0.2",
+    "multer": "^2.1.1",
+    "mysql2": "^3.22.3",
+    "ollama": "^0.6.3",
+    "openai": "^6.37.0",
+    "pdf-parse": "^2.4.5",
+    "pino": "^9.14.0",
+    "playwright": "^1.60.0",
+    "tesseract.js": "^7.0.0",
+    "uuid": "^14.0.0",
+    "zod": "^4.4.3"
+  }
+}
