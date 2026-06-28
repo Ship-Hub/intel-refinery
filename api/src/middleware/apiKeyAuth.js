@@ -1,5 +1,7 @@
 const db =
   require("../config/db");
+const crypto =
+  require("crypto");
 
 const {
   compareApiKey
@@ -49,6 +51,42 @@ const apiKeyAuth =
               "API key missing"
 
           });
+
+      }
+
+      const trustedBotKey =
+        process.env.BOT_BACKEND_API_KEY;
+      const incomingKeyBuffer =
+        Buffer.from(
+          String(
+            apiKey
+          )
+        );
+      const trustedBotKeyBuffer =
+        Buffer.from(
+          String(
+            trustedBotKey ||
+            ""
+          )
+        );
+
+      if (
+        trustedBotKey &&
+        incomingKeyBuffer.length ===
+          trustedBotKeyBuffer.length &&
+        crypto.timingSafeEqual(
+          incomingKeyBuffer,
+          trustedBotKeyBuffer
+        )
+      ) {
+
+        req.apiClient = {
+          id: "intel-refinery-bot",
+          label: "Intel Refinery Bot"
+        };
+        req.accountId = null;
+
+        return next();
 
       }
 

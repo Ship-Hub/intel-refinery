@@ -95,6 +95,14 @@ jobs:
             fi
 
             sed -i 's/\r$//' "$RELEASE_DIR/api/.env"
+            if [ -f /var/www/intel-refinery-bot/shared/bot.env ] && ! grep -q '^BOT_BACKEND_API_KEY=' "$RELEASE_DIR/api/.env"; then
+              BOT_BACKEND_API_KEY="$(grep -E '^BACKEND_API_KEY=' /var/www/intel-refinery-bot/shared/bot.env | tail -1 | cut -d= -f2- | sed 's/\r$//')"
+              if [ -n "$BOT_BACKEND_API_KEY" ]; then
+                printf '\nBOT_BACKEND_API_KEY=%s\n' "$BOT_BACKEND_API_KEY" >> "$RELEASE_DIR/api/.env"
+                cp "$RELEASE_DIR/api/.env" "$SHARED_DIR/api.env"
+                chmod 600 "$SHARED_DIR/api.env"
+              fi
+            fi
             DB_NAME="$(grep -E '^DB_NAME=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
             DB_USER="$(grep -E '^DB_USER=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
             DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "$RELEASE_DIR/api/.env" | tail -1 | cut -d= -f2-)"
