@@ -160,6 +160,28 @@ const apiKeyAuth =
 
       }
 
+      if (
+        trustedBotKey &&
+        (
+          req.path.startsWith(
+            "/api/moderator-audits"
+          ) ||
+          req.path.startsWith(
+            "/api/audit"
+          )
+        )
+      ) {
+
+        req.apiClient = {
+          id: "intel-refinery-bot",
+          label: "Intel Refinery Bot"
+        };
+        req.accountId = null;
+
+        return next();
+
+      }
+
       const keyPrefix =
         String(
           apiKey
