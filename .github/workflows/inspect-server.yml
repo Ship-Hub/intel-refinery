@@ -1,0 +1,29 @@
+name: Inspect Production Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect Nginx and PM2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: ${{ secrets.CONTABO_SSH_PORT }}
+          script: |
+            set -e
+            echo "== hostname =="
+            hostname
+            echo "== nginx enabled sites =="
+            ls -la /etc/nginx/sites-enabled || true
+            echo "== matching server names =="
+            grep -R "server_name .*intelrefinery\\|server_name .*aicostpilot\\|ssl_certificate" -n /etc/nginx/sites-enabled /etc/nginx/sites-available 2>/dev/null || true
+            echo "== letsencrypt live =="
+            find /etc/letsencrypt/live -maxdepth 2 -type l -o -type f 2>/dev/null | sort || true
+            echo "== pm2 =="
+            pm2 list || true
