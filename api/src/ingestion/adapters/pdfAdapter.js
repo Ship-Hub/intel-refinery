@@ -9,6 +9,9 @@ const adapter = {
 
   processFile: async (filePath, fileName) => {
     const result = await pdfExtractor.extractFromPdf(filePath);
+    if (result?.success === false) {
+      throw new Error(result.error || "PDF extraction failed");
+    }
     const text = result.text || "";
     return {
       text: text || "",

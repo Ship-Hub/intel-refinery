@@ -274,6 +274,7 @@ jobs:
 
             cd "$RELEASE_DIR/api"
             npm ci --omit=dev || npm install --omit=dev
+            npx playwright install --with-deps chromium
 
             ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
 

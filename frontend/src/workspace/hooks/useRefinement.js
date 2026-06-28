@@ -1,95 +1,168 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../../lib/api";
 
-const nowTs = () => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+const STAGES = [
+  "normalize",
+  "chunk",
+  "observe",
+  "connect",
+  "understand",
+  "reflect",
+  "build_model",
+  "generate_views",
+];
+
+const STAGE_LABELS = {
+  normalize: "Normalizing saved sources",
+  chunk: "Splitting sources into traceable chunks",
+  observe: "Extracting facts, claims, entities, and events",
+  connect: "Finding relationships and contradictions",
+  understand: "Building structured understanding",
+  reflect: "Checking weak links and evidence gaps",
+  build_model: "Freezing model version",
+  generate_views: "Preparing project views",
 };
 
-const SEED_NODES = [
-  { id: "ai",       label: "AI\nInfrastructure", x: 0.5,   y: 0.5,   radius: 46, color: [120,222,255], isCenter: true, appearAt: 1.0 },
-  { id: "gpu",      label: "GPU\nEcosystem",      x: 0.255, y: 0.27,  radius: 30, color: [216,196,140], appearAt: 2.0 },
-  { id: "cloud",    label: "Cloud\nProviders",    x: 0.74,  y: 0.225, radius: 28, color: [156,142,224], appearAt: 2.8 },
-  { id: "training", label: "Training\nWorkloads", x: 0.805, y: 0.585, radius: 26, color: [96,206,255],  appearAt: 3.6 },
-  { id: "compute",  label: "Compute\nEconomics",  x: 0.555, y: 0.825, radius: 24, color: [92,214,176],  appearAt: 4.3 },
-  { id: "energy",   label: "Energy &\nPower",     x: 0.215, y: 0.7,   radius: 26, color: [232,172,112], appearAt: 5.0 },
+const GRAPH_NODES = [
+  { id: "sources", label: "Saved\nSources", x: 0.5, y: 0.5, radius: 42, color: [87, 216, 255], isCenter: true, appearAt: 0 },
+  { id: "observations", label: "Observations", x: 0.24, y: 0.28, radius: 29, color: [96, 165, 250], appearAt: 1 },
+  { id: "entities", label: "Entities", x: 0.75, y: 0.24, radius: 27, color: [156, 142, 224], appearAt: 1 },
+  { id: "events", label: "Events", x: 0.82, y: 0.58, radius: 25, color: [215, 195, 138], appearAt: 2 },
+  { id: "connections", label: "Connections", x: 0.54, y: 0.82, radius: 26, color: [92, 214, 176], appearAt: 3 },
+  { id: "questions", label: "Gaps &\nQuestions", x: 0.21, y: 0.7, radius: 26, color: [248, 113, 113], appearAt: 4 },
 ];
-const SEED_LINKS = [
-  { from: "ai", to: "gpu", appearAt: 3.0 }, { from: "ai", to: "cloud", appearAt: 3.5 },
-  { from: "ai", to: "training", appearAt: 4.0 }, { from: "ai", to: "compute", appearAt: 4.6 },
-  { from: "ai", to: "energy", appearAt: 5.2 }, { from: "gpu", to: "energy", appearAt: 6.0 },
-  { from: "cloud", to: "training", appearAt: 6.4 }, { from: "training", to: "compute", appearAt: 6.8 },
-];
-const SCRIPT = [
-  { t: 1.4, text: "Reading uploaded documents\u2026" },
-  { t: 2.8, text: "Extracted 47 documents and 2,183 chunks" },
-  { t: 4.2, text: "Created new section: Cloud Infrastructure", detail: "Mentioned across 9 independent sources", discovery: true },
-  { t: 5.9, text: "Connected NVIDIA and CoreWeave", detail: "Mentioned together in 6 sources" },
-  { t: 7.5, text: "Merged similar concepts", detail: "\"Compute Costs\" and \"Computing Costs\" are the same concept" },
-  { t: 9.2, text: "Removed weak relationship", detail: "Press-release content \u2014 only 1 unreliable source" },
-  { t: 11.5, text: "Growing confidence: Cloud Infrastructure", detail: "Evidence strength now High", discovery: true },
-  { t: 14.0, text: "New section emerging: Energy & Power", detail: "Mentioned across 7 sources", discovery: true },
-  { t: 17.0, text: "Connected: GPU Ecosystem \u2192 Energy & Power", detail: "Co-occurrence in 4 technical documents" },
-  { t: 20.5, text: "Open question flagged", detail: "Model-efficiency claims \u2014 needs more evidence" },
-  { t: 24.0, text: "Building confidence: Compute Economics" },
-  { t: 28.5, text: "Final cross-referencing in progress\u2026" },
-  { t: 33.0, text: "All concepts verified and interconnected", detail: "Knowledge model is ready", discovery: true },
-];
-const SEED_FOCUS = {
-  title: "Cloud Infrastructure", status: "Building confidence", evidence: "High",
-  connected: [
-    { label: "GPU Supply Chain", color: "#57D8FF" },
-    { label: "Compute Costs", color: "#57D8FF" },
-    { label: "Data Center Growth", color: "#9B8FD8" },
-  ],
-  sections: [{ heading: "OPEN QUESTIONS (2)", items: [
-    { label: "Needs more evidence", tone: "muted" },
-    { label: "Energy Consumption" }, { label: "Model Efficiency" },
-  ]}],
-};
 
-export function useRefinement(projectId) {
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState("refining");
+const GRAPH_LINKS = [
+  { from: "sources", to: "observations", appearAt: 1 },
+  { from: "sources", to: "entities", appearAt: 1 },
+  { from: "observations", to: "events", appearAt: 2 },
+  { from: "entities", to: "connections", appearAt: 3 },
+  { from: "connections", to: "questions", appearAt: 4 },
+  { from: "events", to: "connections", appearAt: 5 },
+];
+
+const nowTs = () =>
+  new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+export function useRefinement(projectId, runId = "latest") {
+  const [run, setRun] = useState(null);
   const [log, setLog] = useState([]);
-  const [graph, setGraph] = useState({ nodes: [], links: [] });
-  const [focus, setFocus] = useState(null);
-  const [discovery, setDiscovery] = useState(null);
-  const raf = useRef(0);
-  const start = useRef(0);
-  const fired = useRef(new Set());
+  const [error, setError] = useState("");
+  const seen = useRef(new Set());
 
-  const pushLog = useCallback((e) => {
-    const entry = { id: e.id ?? crypto.randomUUID(), ts: nowTs(), glowing: true, ...e };
-    setLog((l) => [...l, entry]);
-    setTimeout(() => setLog((l) => l.map((x) => (x.id === entry.id ? { ...x, glowing: false } : x))), 1600);
-    if (e.discovery) {
-      setDiscovery({ id: entry.id, text: e.text });
-      setTimeout(() => setDiscovery((d) => (d?.id === entry.id ? null : d)), 5000);
-    }
+  const appendLog = useCallback((stage, tone = "normal", message = null) => {
+    const key = `${stage}:${tone}:${message || ""}`;
+    if (seen.current.has(key)) return;
+    seen.current.add(key);
+
+    setLog((items) => [
+      ...items,
+      {
+        id: `${key}-${Date.now()}`,
+        ts: nowTs(),
+        text: message || STAGE_LABELS[stage] || stage,
+        detail: tone === "failed" ? "Stage failed. Check the run details before trusting output." : null,
+        glowing: true,
+        discovery: stage === "observe" || stage === "connect" || stage === "understand",
+      },
+    ]);
   }, []);
 
-  // ===== LOCAL SIMULATION =====
-  useEffect(() => {
-    setGraph({ nodes: SEED_NODES, links: SEED_LINKS });
-    setFocus(SEED_FOCUS);
-    start.current = performance.now();
-    const tick = () => {
-      const t = (performance.now() - start.current) / 1000;
-      setProgress(Math.min(100, (t / 35) * 100));
-      for (const s of SCRIPT) {
-        if (t >= s.t && !fired.current.has(s.text)) {
-          fired.current.add(s.text);
-          pushLog(s);
-        }
-      }
-      if (t >= 35) { setStatus("complete"); return; }
-      raf.current = requestAnimationFrame(tick);
-    };
-    raf.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf.current);
-  }, [pushLog]);
-  // ===== END SIMULATION =====
+  const applyRun = useCallback((nextRun) => {
+    setRun(nextRun);
+    setError("");
 
-  return { progress, status, log, graph, focus, discovery };
+    for (const stage of nextRun?.stagesCompleted || []) appendLog(stage);
+    for (const stage of nextRun?.stagesFailed || []) appendLog(stage, "failed");
+    if (nextRun?.status === "failed" && nextRun.errorMessage) {
+      appendLog("failed", "failed", nextRun.errorMessage);
+    }
+  }, [appendLog]);
+
+  useEffect(() => {
+    if (!projectId || !runId) return undefined;
+
+    let cancelled = false;
+    const controller = new AbortController();
+    let timer = null;
+
+    const poll = async () => {
+      try {
+        const nextRun = await api.v1RunStatus(projectId, runId);
+        if (!cancelled) applyRun(nextRun);
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Could not load run status");
+      }
+    };
+
+    api.streamV1Run(projectId, runId, {
+      signal: controller.signal,
+      onEvent: (event, data) => {
+        if (cancelled) return;
+        if (event === "status" || event === "done") applyRun(data);
+        if (event === "run-event") {
+          if (data.eventType === "stage_completed" && data.stage) appendLog(data.stage);
+          if (data.eventType === "stage_failed" && data.stage) appendLog(data.stage, "failed", data.message);
+          if (data.eventType === "run_failed") appendLog("failed", "failed", data.message);
+        }
+      },
+    }).catch((err) => {
+      if (cancelled || err.name === "AbortError") return;
+      setError("Live stream unavailable. Falling back to polling.");
+      poll();
+      timer = window.setInterval(poll, 2500);
+    });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer) window.clearInterval(timer);
+    };
+  }, [appendLog, applyRun, projectId, runId]);
+
+  const completedCount = run?.stagesCompleted?.length || 0;
+  const visibleNodeCount = Math.max(1, Math.min(GRAPH_NODES.length, Math.ceil((completedCount / STAGES.length) * GRAPH_NODES.length)));
+  const visibleNodeIds = useMemo(
+    () => new Set(GRAPH_NODES.slice(0, visibleNodeCount).map((node) => node.id)),
+    [visibleNodeCount]
+  );
+
+  const graph = useMemo(() => ({
+    nodes: GRAPH_NODES.slice(0, visibleNodeCount),
+    links: GRAPH_LINKS.filter((link) => visibleNodeIds.has(link.from) && visibleNodeIds.has(link.to)),
+  }), [visibleNodeCount, visibleNodeIds]);
+
+  const focus = {
+    title: run?.status === "completed" ? "Model ready" : "Refining project",
+    status: run?.status || "queued",
+    evidence: `${completedCount}/${STAGES.length} stages`,
+    connected: (run?.stagesCompleted || []).slice(-3).map((stage) => ({
+      label: STAGE_LABELS[stage] || stage,
+      color: "#57D8FF",
+    })),
+    sections: [
+      {
+        heading: "RUN",
+        items: [
+          { label: `Run ${run?.id || runId}` },
+          ...(run?.errorMessage ? [{ label: run.errorMessage, tone: "muted" }] : []),
+        ],
+      },
+    ],
+  };
+
+  return {
+    run,
+    error,
+    progress: run?.progress ?? 0,
+    status: run?.status === "completed" ? "complete" : run?.status === "failed" ? "failed" : "refining",
+    log,
+    graph,
+    focus,
+    discovery: [...log].reverse().find((entry) => entry.discovery) || null,
+  };
 }

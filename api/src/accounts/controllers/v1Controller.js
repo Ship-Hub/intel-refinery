@@ -413,6 +413,7 @@ const createUrlSourceV1 = async (req, res) => {
       extractedText = result.text || "";
       metadata = { ...metadata, ...(result.metadata || {}) };
     }
+    const extractionFailed = !!metadata.error;
 
     await db.promise().query(
       `INSERT INTO sources (
@@ -431,7 +432,7 @@ const createUrlSourceV1 = async (req, res) => {
         uri,
         extractedText,
         JSON.stringify(metadata),
-        extractedText ? "normalized" : "pending",
+        extractionFailed ? "failed" : extractedText ? "normalized" : "pending",
         sourceNotes || null,
       ]
     );
@@ -473,6 +474,7 @@ const uploadSourceV1 = async (req, res) => {
         metadata.ingestionError = err.message;
       }
     }
+    const extractionFailed = !!metadata.ingestionError;
 
     await db.promise().query(
       `INSERT INTO sources (
@@ -494,7 +496,7 @@ const uploadSourceV1 = async (req, res) => {
         extractedText,
         JSON.stringify(metadata),
         fileHash,
-        extractedText ? "normalized" : "pending",
+        extractionFailed ? "failed" : extractedText ? "normalized" : "pending",
         req.body.sourceNotes || null,
       ]
     );

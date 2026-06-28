@@ -30,6 +30,12 @@ export default function CyberRefinementRun() {
       {(status === "complete" || status === "failed") && (
         <div className="fixed bottom-5 right-5 z-50 flex gap-2 rounded-lg border border-line bg-elevated p-3 shadow-2xl">
           <button
+            onClick={() => navigate("/")}
+            className="rounded-md border border-line px-3 py-2 text-[12px] text-ink-3 transition hover:border-blue-400/30 hover:text-blue-100"
+          >
+            Home
+          </button>
+          <button
             onClick={() => navigate(`/cyber/projects/${id}/workspace`)}
             className="rounded-md border border-line px-3 py-2 text-[12px] text-ink-3 transition hover:border-blue-400/30 hover:text-blue-100"
           >

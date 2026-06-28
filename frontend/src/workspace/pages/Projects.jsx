@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 
-export default function Projects() {
+export default function Projects({ profileFilter = null }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.projects()
-      .then(setProjects)
+    api.v1Projects()
+      .then((items) => setProjects(profileFilter ? items.filter((item) => item.profileKey === profileFilter) : items))
       .catch(() => setProjects([]))
       .finally(() => setLoading(false));
   }, []);
@@ -19,10 +19,12 @@ export default function Projects() {
       <div className="mx-auto max-w-[960px] px-8 py-16">
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="font-display text-[38px] font-light tracking-normal text-ink-text">
-              Projects
+            <h1 className="text-[32px] font-semibold tracking-tight text-ink-text md:text-[38px]">
+              {profileFilter === "cyber" ? "Cyber projects" : "Projects"}
             </h1>
-            <p className="mt-2 text-[14px] text-ink-4">General and Cyber Refinery workspaces.</p>
+            <p className="mt-2 text-[14px] text-ink-4">
+              {profileFilter === "cyber" ? "Cyber Refinery workspaces and model surfaces." : "General and Cyber Refinery workspaces."}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -44,8 +46,10 @@ export default function Projects() {
           <div className="text-[13px] text-ink-5">Loading...</div>
         ) : projects.length === 0 ? (
           <div className="rounded-xl border border-line bg-surface p-12 text-center">
-            <div className="text-[15px] text-ink-3 mb-2">No projects yet</div>
-            <div className="text-[13px] text-ink-5">Create your first project to get started.</div>
+            <div className="mb-2 text-[15px] text-ink-3">No projects yet</div>
+            <div className="text-[13px] text-ink-5">
+              {profileFilter === "cyber" ? "Create a Cyber project to start modeling findings, assets, and actions." : "Create your first project to get started."}
+            </div>
           </div>
         ) : (
           <div className="grid gap-3">

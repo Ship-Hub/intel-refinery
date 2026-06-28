@@ -17,6 +17,9 @@ const adapter = {
 
     try {
       const result = await urlExtractor.extractFromUrl(url);
+      if (result?.success === false) {
+        throw new Error(result.error || "URL extraction failed");
+      }
       text = result.text || result.content || "";
       metadata = {
         ...metadata,

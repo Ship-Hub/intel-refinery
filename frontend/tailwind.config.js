@@ -19,9 +19,9 @@ export default {
         // Workspace text ramp (ink-N are not used by landing page — safe)
         "ink-text": "#F2F4F7",
         "ink-2": "#D4D8E0",
-        "ink-3": "#9CA3AF",
-        "ink-4": "#5A6472",
-        "ink-5": "#3D4755",
+        "ink-3": "#B4BDCB",
+        "ink-4": "#8792A3",
+        "ink-5": "#677386",
         surface: "#121720",
         elevated: "#181F2A",
         rail: "#0C0F16",

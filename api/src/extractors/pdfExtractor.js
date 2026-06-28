@@ -1,8 +1,9 @@
 const fs =
   require("fs");
 
-const pdfParse =
-  require("pdf-parse");
+const {
+  PDFParse
+} = require("pdf-parse");
 
 const extractFromPdf =
   async (filePath) => {
@@ -14,10 +15,18 @@ const extractFromPdf =
           filePath
         );
 
-      const pdfData =
-        await pdfParse(
-          dataBuffer
-        );
+      const parser =
+        new PDFParse({
+          data: dataBuffer
+        });
+
+      let pdfData;
+      try {
+        pdfData =
+          await parser.getText();
+      } finally {
+        await parser.destroy();
+      }
 
       return {
         success: true,
