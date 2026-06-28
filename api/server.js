@@ -350,7 +350,14 @@ const v1ApiAuth = async (req, res, next) => {
     try {
       const session = await getSessionFromToken(token);
       if (session) {
-        req.account = { id: session.account_id };
+        const [members] = await dbRefinery.promise().query(
+          "SELECT account_id FROM account_members WHERE user_id = ? LIMIT 1",
+          [session.userId]
+        );
+        if (members.length === 0) {
+          return res.status(401).json({ success: false, error: "User has no account" });
+        }
+        req.account = { id: members[0].account_id };
         req.user = session;
         return next();
       }
