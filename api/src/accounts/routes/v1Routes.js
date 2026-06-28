@@ -7,9 +7,8 @@ const { ssrfProtection, sanitizeInput } = require("../../middleware/security");
 const {
   createProjectV1Schema,
   updateProjectV1Schema,
-  createSourceV1Schema,
+  updateSourceV1Schema,
   createApiKeyV1Schema,
-  triggerRefineV1Schema,
 } = require("../validators/v1Schemas");
 const {
   getProjects,
@@ -18,6 +17,8 @@ const {
   updateProjectV1,
   deleteProjectV1,
   getSources,
+  updateSourceV1,
+  getCyberReadiness,
   getArtifacts,
   getConnections,
   getUsage,
@@ -39,6 +40,8 @@ router.patch("/projects/:projectId", validateRequest(updateProjectV1Schema), ide
 router.delete("/projects/:projectId", idempotency, idempotencyHandler, deleteProjectV1);
 
 router.get("/projects/:projectId/sources", cursorPagination(), getSources);
+router.patch("/projects/:projectId/sources/:sourceId", validateRequest(updateSourceV1Schema), idempotency, idempotencyHandler, updateSourceV1);
+router.get("/projects/:projectId/cyber/readiness", getCyberReadiness);
 router.get("/projects/:projectId/artifacts", cursorPagination(), getArtifacts);
 router.get("/projects/:projectId/connections", cursorPagination(), getConnections);
 router.get("/projects/:projectId/model", getModelStatus);

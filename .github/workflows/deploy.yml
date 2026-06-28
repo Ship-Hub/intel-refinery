@@ -126,11 +126,71 @@ jobs:
             FLUSH PRIVILEGES;
             SQL
 
-            for schema_file in "$RELEASE_DIR"/api/database/migrations/*.sql "$RELEASE_DIR"/api/database/*.sql; do
-              if [ -f "$schema_file" ]; then
-                mysql_exec "$DB_NAME" < "$schema_file" || true
+            mysql_exec "$DB_NAME" <<SQL
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+              filename VARCHAR(255) PRIMARY KEY,
+              applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            SQL
+
+            migration_applied() {
+              local filename="$1"
+              local filename_sql
+              local count
+              filename_sql="$(printf '%s' "$filename" | sed "s/'/''/g")"
+              count="$(mysql_exec -Nse "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$filename_sql'" "$DB_NAME")"
+              [ "$count" = "1" ]
+            }
+
+            mark_migration_applied() {
+              local filename="$1"
+              local filename_sql
+              filename_sql="$(printf '%s' "$filename" | sed "s/'/''/g")"
+              mysql_exec -e "INSERT IGNORE INTO schema_migrations (filename) VALUES ('$filename_sql')" "$DB_NAME"
+            }
+
+            apply_migration() {
+              local schema_file="$1"
+              local filename
+              filename="$(basename "$schema_file")"
+              if migration_applied "$filename"; then
+                echo "Skipping already-applied migration: $filename"
+                return 0
               fi
-            done
+
+              echo "Applying migration: $filename"
+              mysql_exec "$DB_NAME" < "$schema_file"
+              mark_migration_applied "$filename"
+            }
+
+            existing_refinery_db=0
+            if mysql_exec -Nse "SHOW TABLES LIKE 'projects'" "$DB_NAME" | grep -q '^projects$'; then
+              existing_refinery_db=1
+            fi
+
+            while IFS= read -r schema_file; do
+              filename="$(basename "$schema_file")"
+              prefix="${filename%%_*}"
+
+              if [ "$existing_refinery_db" = "1" ]; then
+                case "$schema_file" in
+                  */api/database/migrations/*)
+                    mark_migration_applied "$filename"
+                    continue
+                    ;;
+                esac
+
+                if printf '%s' "$prefix" | grep -Eq '^[0-9]+$' && [ "$prefix" -lt 13 ]; then
+                  mark_migration_applied "$filename"
+                  continue
+                fi
+              fi
+
+              apply_migration "$schema_file"
+            done < <(
+              find "$RELEASE_DIR/api/database/migrations" -maxdepth 1 -type f -name '*.sql' | sort
+              find "$RELEASE_DIR/api/database" -maxdepth 1 -type f -name '*.sql' | sort
+            )
 
             cd "$RELEASE_DIR/api"
             npm ci --omit=dev || npm install --omit=dev

@@ -1,32 +1,38 @@
 const crypto = require("crypto");
 const db = require("../../config/db");
 const { successResponse, errorResponse } = require("../../middleware/apiResponse");
-const { createProject, getProjectById } = require("../../projects/routes/projectRoutes");
 const { createApiKey: createApiKeyService, listApiKeys, revokeApiKey } = require("../services/apiKeyService");
 const { getPlanLimits } = require("../services/entitlementService");
-const { recordUsageEvent } = require("../services/usageService");
 const { buildPaginatedResponse, encodeCursor } = require("../../middleware/pagination");
+const { requireProfileByKey } = require("../../refinery/profiles/profileService");
+const { REFINERY_PROFILE_KEYS } = require("../../refinery/profiles/profileConstants");
+const { calculateCyberReadiness } = require("../../refinery/readiness/cyberReadinessService");
 
 const getProjects = async (req, res) => {
   try {
     const accountId = req.account.id;
     const { cursor, limit } = req.pagination || { cursor: null, limit: 50 };
-    let whereSql = "WHERE account_id = ?";
+    let whereSql = "WHERE projects.account_id = ?";
     const params = [accountId];
     if (cursor) {
       try {
         const decoded = Buffer.from(cursor, "base64url").toString("utf8");
         const { v, id } = JSON.parse(decoded);
-        whereSql += " AND (created_at < ? OR (created_at = ? AND id < ?))";
+        whereSql += " AND (projects.created_at < ? OR (projects.created_at = ? AND projects.id < ?))";
         params.push(v, v, id);
       } catch { /* ignore invalid cursor */ }
     }
     params.push(limit + 1);
     const [rows] = await db.promise().query(
-      `SELECT id, workspace_id AS workspaceId, title, description, guidance_prompt AS guidancePrompt,
-              mode, status, source_count AS sourceCount, created_at AS createdAt, updated_at AS updatedAt
-       FROM projects ${whereSql}
-       ORDER BY created_at DESC, id DESC
+      `SELECT projects.id, projects.workspace_id AS workspaceId, projects.title, projects.description,
+              projects.guidance_prompt AS guidancePrompt, projects.mode, projects.status, projects.intent,
+              projects.source_count AS sourceCount,
+              rp.profile_key AS profileKey, rp.name AS profileName,
+              projects.created_at AS createdAt, projects.updated_at AS updatedAt
+       FROM projects
+       LEFT JOIN refinery_profiles rp ON rp.id = projects.refinery_profile_id
+       ${whereSql}
+       ORDER BY projects.created_at DESC, projects.id DESC
        LIMIT ?`,
       params
     );
@@ -41,16 +47,22 @@ const createProjectV1 = async (req, res) => {
   try {
     const accountId = req.account.id;
     const id = crypto.randomUUID();
-    const { title, description, workspaceId, guidancePrompt, mode } = req.validatedBody;
+    const { title, description, workspaceId, guidancePrompt, mode, refineryProfile, intent } = req.validatedBody;
+    const profile = await requireProfileByKey(refineryProfile || REFINERY_PROFILE_KEYS.GENERAL);
     await db.promise().query(
-      `INSERT INTO projects (id, workspace_id, account_id, title, description, guidance_prompt, mode, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')`,
-      [id, workspaceId || null, accountId, title, description || null, guidancePrompt || null, mode || "quick"]
+      `INSERT INTO projects (id, workspace_id, account_id, refinery_profile_id, intent, title, description, guidance_prompt, mode, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+      [id, workspaceId || null, accountId, profile.id, intent || null, title, description || null, guidancePrompt || null, mode || "quick"]
     );
     const [rows] = await db.promise().query(
-      `SELECT id, workspace_id AS workspaceId, account_id AS accountId, title, description,
-              guidance_prompt AS guidancePrompt, mode, status, created_at AS createdAt
-       FROM projects WHERE id = ? LIMIT 1`,
+      `SELECT projects.id, projects.workspace_id AS workspaceId, projects.account_id AS accountId,
+              projects.title, projects.description, projects.guidance_prompt AS guidancePrompt,
+              projects.mode, projects.status, projects.intent,
+              rp.profile_key AS profileKey, rp.name AS profileName,
+              projects.created_at AS createdAt
+       FROM projects
+       LEFT JOIN refinery_profiles rp ON rp.id = projects.refinery_profile_id
+       WHERE projects.id = ? LIMIT 1`,
       [id]
     );
     return successResponse(res, rows[0], { requestId: req.requestId });
@@ -62,10 +74,14 @@ const createProjectV1 = async (req, res) => {
 const getProject = async (req, res) => {
   try {
     const [rows] = await db.promise().query(
-      `SELECT id, workspace_id AS workspaceId, account_id AS accountId, title, description,
-              guidance_prompt AS guidancePrompt, mode, status, source_count AS sourceCount,
-              created_at AS createdAt, updated_at AS updatedAt
-       FROM projects WHERE id = ? AND account_id = ? LIMIT 1`,
+      `SELECT projects.id, projects.workspace_id AS workspaceId, projects.account_id AS accountId,
+              projects.title, projects.description, projects.guidance_prompt AS guidancePrompt,
+              projects.mode, projects.status, projects.intent, projects.source_count AS sourceCount,
+              rp.profile_key AS profileKey, rp.name AS profileName,
+              projects.created_at AS createdAt, projects.updated_at AS updatedAt
+       FROM projects
+       LEFT JOIN refinery_profiles rp ON rp.id = projects.refinery_profile_id
+       WHERE projects.id = ? AND projects.account_id = ? LIMIT 1`,
       [req.params.projectId, req.account.id]
     );
     if (!rows[0]) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
@@ -89,6 +105,12 @@ const updateProjectV1 = async (req, res) => {
     if (req.validatedBody.guidancePrompt !== undefined) { fields.push("guidance_prompt = ?"); values.push(req.validatedBody.guidancePrompt); }
     if (req.validatedBody.mode !== undefined) { fields.push("mode = ?"); values.push(req.validatedBody.mode); }
     if (req.validatedBody.status !== undefined) { fields.push("status = ?"); values.push(req.validatedBody.status); }
+    if (req.validatedBody.intent !== undefined) { fields.push("intent = ?"); values.push(req.validatedBody.intent); }
+    if (req.validatedBody.refineryProfile !== undefined) {
+      const profile = await requireProfileByKey(req.validatedBody.refineryProfile);
+      fields.push("refinery_profile_id = ?");
+      values.push(profile.id);
+    }
     if (fields.length > 0) {
       values.push(req.params.projectId, req.account.id);
       await db.promise().query(
@@ -97,9 +119,14 @@ const updateProjectV1 = async (req, res) => {
       );
     }
     const [rows] = await db.promise().query(
-      `SELECT id, workspace_id AS workspaceId, title, description, guidance_prompt AS guidancePrompt,
-              mode, status, source_count AS sourceCount, created_at AS createdAt, updated_at AS updatedAt
-       FROM projects WHERE id = ? LIMIT 1`,
+      `SELECT projects.id, projects.workspace_id AS workspaceId, projects.title, projects.description,
+              projects.guidance_prompt AS guidancePrompt, projects.mode, projects.status,
+              projects.intent, projects.source_count AS sourceCount,
+              rp.profile_key AS profileKey, rp.name AS profileName,
+              projects.created_at AS createdAt, projects.updated_at AS updatedAt
+       FROM projects
+       LEFT JOIN refinery_profiles rp ON rp.id = projects.refinery_profile_id
+       WHERE projects.id = ? LIMIT 1`,
       [req.params.projectId]
     );
     return successResponse(res, rows[0], { requestId: req.requestId });
@@ -137,7 +164,9 @@ const getSources = async (req, res) => {
     params.push(limit + 1);
     const [rows] = await db.promise().query(
       `SELECT s.id, s.project_id AS projectId, s.source_type AS sourceType, s.original_name AS originalName,
-              s.title, s.uri, s.status, s.created_at AS createdAt
+              s.source_category AS sourceCategory, s.inclusion_state AS inclusionState,
+              s.display_name AS displayName, s.source_notes AS sourceNotes,
+              s.source_package_id AS sourcePackageId, s.title, s.uri, s.status, s.created_at AS createdAt
        FROM sources s
        JOIN projects p ON p.id = s.project_id
        ${whereSql}
@@ -147,6 +176,76 @@ const getSources = async (req, res) => {
     );
     const result = buildPaginatedResponse(rows, limit, (last) => encodeCursor(last.createdAt, last.id));
     return successResponse(res, result.items, { requestId: req.requestId, nextCursor: result.nextCursor, hasMore: result.hasMore });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const updateSourceV1 = async (req, res) => {
+  try {
+    const [existing] = await db.promise().query(
+      `SELECT s.id
+       FROM sources s
+       JOIN projects p ON p.id = s.project_id
+       WHERE s.id = ? AND s.project_id = ? AND p.account_id = ?
+       LIMIT 1`,
+      [req.params.sourceId, req.params.projectId, req.account.id]
+    );
+    if (!existing[0]) return errorResponse(res, 404, "Source not found", { requestId: req.requestId });
+
+    const fields = [];
+    const values = [];
+    if (req.validatedBody.title !== undefined) { fields.push("title = ?"); values.push(req.validatedBody.title); }
+    if (req.validatedBody.displayName !== undefined) { fields.push("display_name = ?"); values.push(req.validatedBody.displayName); }
+    if (req.validatedBody.sourceCategory !== undefined) { fields.push("source_category = ?"); values.push(req.validatedBody.sourceCategory); }
+    if (req.validatedBody.inclusionState !== undefined) { fields.push("inclusion_state = ?"); values.push(req.validatedBody.inclusionState); }
+    if (req.validatedBody.sourceNotes !== undefined) { fields.push("source_notes = ?"); values.push(req.validatedBody.sourceNotes); }
+
+    if (fields.length > 0) {
+      values.push(req.params.sourceId);
+      await db.promise().query(`UPDATE sources SET ${fields.join(", ")} WHERE id = ?`, values);
+    }
+
+    const [rows] = await db.promise().query(
+      `SELECT id, project_id AS projectId, source_type AS sourceType, source_category AS sourceCategory,
+              inclusion_state AS inclusionState, display_name AS displayName, source_notes AS sourceNotes,
+              title, uri, status, created_at AS createdAt, updated_at AS updatedAt
+       FROM sources
+       WHERE id = ? LIMIT 1`,
+      [req.params.sourceId]
+    );
+    return successResponse(res, rows[0], { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const getCyberReadiness = async (req, res) => {
+  try {
+    const [projectRows] = await db.promise().query(
+      `SELECT p.id, p.intent, p.status, rp.profile_key AS profileKey
+       FROM projects p
+       LEFT JOIN refinery_profiles rp ON rp.id = p.refinery_profile_id
+       WHERE p.id = ? AND p.account_id = ?
+       LIMIT 1`,
+      [req.params.projectId, req.account.id]
+    );
+    const project = projectRows[0];
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+    if (project.profileKey !== REFINERY_PROFILE_KEYS.CYBER) {
+      return errorResponse(res, 409, "Cyber readiness is only available for Cyber Refinery projects", { requestId: req.requestId });
+    }
+
+    const [sources] = await db.promise().query(
+      `SELECT id, source_type AS sourceType, source_category AS sourceCategory,
+              inclusion_state AS inclusionState, title, uri, status,
+              raw_text AS rawText, extracted_text AS extractedText
+       FROM sources
+       WHERE project_id = ?`,
+      [req.params.projectId]
+    );
+
+    return successResponse(res, calculateCyberReadiness({ project, sources }), { requestId: req.requestId });
   } catch (err) {
     return errorResponse(res, 500, err.message, { requestId: req.requestId });
   }
@@ -354,6 +453,8 @@ module.exports = {
   updateProjectV1,
   deleteProjectV1,
   getSources,
+  updateSourceV1,
+  getCyberReadiness,
   getArtifacts,
   getConnections,
   getUsage,
