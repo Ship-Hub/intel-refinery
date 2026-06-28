@@ -40,8 +40,8 @@ export function Nav() {
         ))}
       </div>
       <div className="hidden md:flex items-center gap-4">
-        <a href="https://app.intelrefinery.site" className="text-[14.5px] text-sub no-underline transition-colors hover:text-cyan">Sign In</a>
-        <a href="https://app.intelrefinery.site" className="btn-primary !px-[18px] !py-[10px] !text-[14px]">Start Refining</a>
+        <a href="https://app.intelrefinery.site/login" className="text-[14.5px] text-sub no-underline transition-colors hover:text-cyan">Sign In</a>
+        <a href="https://app.intelrefinery.site/signup" className="btn-primary !px-[18px] !py-[10px] !text-[14px]">Start Refining</a>
       </div>
       <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden ml-auto text-sub p-2" aria-label="Menu">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -52,8 +52,8 @@ export function Nav() {
             <a key={l} href={href(l)} className="text-[15px] text-sub no-underline" onClick={() => setMenuOpen(false)}>{l}</a>
           ))}
           <hr className="border-white/5" />
-          <a href="https://app.intelrefinery.site" className="text-[15px] text-sub no-underline" onClick={() => setMenuOpen(false)}>Sign In</a>
-          <a href="https://app.intelrefinery.site" className="btn-primary !px-[18px] !py-[10px] !text-[14px] text-center" onClick={() => setMenuOpen(false)}>Start Refining</a>
+          <a href="https://app.intelrefinery.site/login" className="text-[15px] text-sub no-underline" onClick={() => setMenuOpen(false)}>Sign In</a>
+          <a href="https://app.intelrefinery.site/signup" className="btn-primary !px-[18px] !py-[10px] !text-[14px] text-center" onClick={() => setMenuOpen(false)}>Start Refining</a>
         </div>
       )}
     </nav>
@@ -655,7 +655,7 @@ export function FinalCTA() {
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-start gap-3 md:items-end">
-          <a href="https://app.intelrefinery.site" className="btn-primary !px-7 !py-[15px] !text-[16px] shadow-[0_0_30px_rgba(87,216,255,0.3)]">Start Refining <Glyph name="arrow" size={16} stroke={1.6} /></a>
+          <a href="https://app.intelrefinery.site/signup" className="btn-primary !px-7 !py-[15px] !text-[16px] shadow-[0_0_30px_rgba(87,216,255,0.3)]">Start Refining <Glyph name="arrow" size={16} stroke={1.6} /></a>
           <a href="#" className="flex items-center gap-[7px] text-[13px] text-muted no-underline transition-colors hover:text-cyan">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2.5l8 4.5-8 4.5z" fill="#57D8FF" /></svg>
             Explore a Demo

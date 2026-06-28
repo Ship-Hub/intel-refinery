@@ -260,11 +260,21 @@ export default function AuthPanel({
         );
 
       const popup =
-        window.open(
-          `${API_BASE_URL}${providerPath}`,
-          "intel-refinery-oauth",
-          `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
-        );
+        (() => {
+          const url =
+            new URL(
+              `${API_BASE_URL}${providerPath}`
+            );
+          url.searchParams.set(
+            "frontend_origin",
+            window.location.origin
+          );
+          return window.open(
+            url.toString(),
+            "intel-refinery-oauth",
+            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
+          );
+        })();
 
       if (!popup) {
         setStatus(

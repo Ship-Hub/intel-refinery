@@ -39,7 +39,7 @@ export default function DocsPage() {
             <Logo />
           </a>
           <a
-            href="https://app.intelrefinery.site"
+            href="https://app.intelrefinery.site/signup"
             className="hud-button"
           >
             Create Key

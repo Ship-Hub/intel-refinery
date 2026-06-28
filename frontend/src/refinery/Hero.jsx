@@ -29,7 +29,7 @@ export default function Hero() {
           Your information is not valuable simply because you have it. Intel Refinery connects documents, links, notes, images and recordings to reveal what matters, what relates, what conflicts and what deserves your attention.
         </p>
         <div className="hero-rise flex flex-col sm:flex-row gap-3" style={{ animationDelay: '.68s' }}>
-          <a href="https://app.intelrefinery.site" className="btn-primary justify-center">Start Refining <Glyph name="arrow" size={15} stroke={1.6} /></a>
+          <a href="https://app.intelrefinery.site/signup" className="btn-primary justify-center">Start Refining <Glyph name="arrow" size={15} stroke={1.6} /></a>
           <a href="#" className="btn-ghost justify-center">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2.5l8 4.5-8 4.5z" fill="#57D8FF" /></svg>
             Explore a Demo

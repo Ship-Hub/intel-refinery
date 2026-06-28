@@ -40,7 +40,7 @@ export default function AuthCallback() {
         window.close();
       } else if (token) {
         window.location.replace(
-          "/console"
+          "/"
         );
       } else {
         window.location.replace(

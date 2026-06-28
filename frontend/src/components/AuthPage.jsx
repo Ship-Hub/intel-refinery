@@ -2,6 +2,52 @@ import { useEffect, useState } from "react";
 import AuthPanel from "./AuthPanel";
 import Logo from "./Logo";
 
+const getDefaultRedirect = () => {
+  if (window.location.hostname.startsWith("app.") || window.location.search.includes("app=1")) {
+    return "/";
+  }
+
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "/?app=1";
+  }
+
+  return "https://app.intelrefinery.site/";
+};
+
+const getSafeRedirect = () => {
+  const params =
+    new URLSearchParams(
+      window.location.search
+    );
+  const redirect =
+    params.get("redirect");
+
+  if (!redirect) {
+    return getDefaultRedirect();
+  }
+
+  try {
+    const url =
+      new URL(
+        redirect,
+        window.location.origin
+      );
+    const allowedOrigins =
+      new Set([
+        window.location.origin,
+        "https://app.intelrefinery.site"
+      ]);
+
+    if (!allowedOrigins.has(url.origin)) {
+      return getDefaultRedirect();
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return getDefaultRedirect();
+  }
+};
+
 export default function AuthPage({
   mode = "login"
 }) {
@@ -61,7 +107,7 @@ export default function AuthPage({
         <AuthPanel
           onAuthenticated={() =>
             window.location.assign(
-              "/console"
+              getSafeRedirect()
             )
           }
         />

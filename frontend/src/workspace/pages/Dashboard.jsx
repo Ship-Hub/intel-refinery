@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
+import { useWorkspaceAuth } from "../auth/WorkspaceAuth";
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -13,6 +14,12 @@ export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user } =
+    useWorkspaceAuth();
+  const displayName =
+    user?.displayName ||
+    user?.email ||
+    "there";
 
   useEffect(() => {
     api.projects()
@@ -25,7 +32,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-bg">
       <div className="mx-auto max-w-[960px] px-8 py-16">
         <h1 className="font-display text-[54px] font-light tracking-[-0.025em] text-ink-text mb-2">
-          {getGreeting()}, Cap.
+          {getGreeting()}, {displayName}.
         </h1>
         <p className="text-[15px] text-ink-4 mb-12">
           What would you like to refine today?

@@ -24,8 +24,8 @@ export default function Navbar() {
             </a>
           ))}
         </nav>
-        <a href="https://app.intelrefinery.site" className="hud-button hidden sm:inline-flex">
-          Create Key
+        <a href="https://app.intelrefinery.site/login" className="hud-button hidden sm:inline-flex">
+          Login
         </a>
       </div>
     </header>

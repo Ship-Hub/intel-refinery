@@ -46,7 +46,18 @@ function Item({ to, end, icon, label }) {
   );
 }
 
-export default function Sidebar({ collapsed, onToggle, user = { name: "Cap", plan: "Pro Plan" } }) {
+const getDisplayName = (user) =>
+  user?.displayName ||
+  user?.email ||
+  "Intel Refinery user";
+
+const getInitial = (user) =>
+  getDisplayName(user).trim().charAt(0).toUpperCase() || "U";
+
+export default function Sidebar({ collapsed, onToggle, user, onSignOut }) {
+  const displayName =
+    getDisplayName(user);
+
   return (
     <nav
       data-collapsed={collapsed ? "1" : "0"}
@@ -94,13 +105,19 @@ export default function Sidebar({ collapsed, onToggle, user = { name: "Cap", pla
 
       {/* User */}
       <div className="px-[10px]">
-        <div className="flex cursor-pointer items-center gap-[9px] rounded-lg border border-line px-[10px] py-[9px]">
+        <div className="flex items-center gap-[9px] rounded-lg border border-line px-[10px] py-[9px]">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyan/25 bg-gradient-to-br from-cyan/15 to-gold/10 text-[11px] font-semibold text-cyan">
-            {user.name[0]}
+            {getInitial(user)}
           </div>
           <div className="rf-lbl min-w-0 flex-1">
-            <div className="text-[12px] font-medium text-ink-2">{user.name}</div>
-            <div className="text-[10.5px] text-[#4B5563]">{user.plan}</div>
+            <div className="truncate text-[12px] font-medium text-ink-2">{displayName}</div>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="mt-0.5 text-[10.5px] text-[#4B5563] hover:text-ink-2"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </div>

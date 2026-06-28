@@ -1,5 +1,6 @@
-import { Routes, Route } from "react-router-dom";
+import { Navigate, Routes, Route } from "react-router-dom";
 import AppLayout from "./layout/AppLayout";
+import { WorkspaceAuthGate } from "./auth/WorkspaceAuth";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
 import CreateMethod from "./pages/CreateMethod";
@@ -15,22 +16,26 @@ import Transform from "./pages/Transform";
 export default function WorkspaceRoutes() {
   return (
     <Routes>
-      {/* Routes WITH sidebar */}
-      <Route element={<AppLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route path="/cyber/projects/:id/workspace" element={<CyberProjectWorkspace />} />
-        <Route path="/cyber/projects/:id/overview" element={<CyberProjectOverview />} />
-        <Route path="/cyber/projects/:id/refine" element={<CyberRefinementRun />} />
+      <Route element={<WorkspaceAuthGate />}>
+        {/* Routes WITH sidebar */}
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/cyber/projects/:id/workspace" element={<CyberProjectWorkspace />} />
+          <Route path="/cyber/projects/:id/overview" element={<CyberProjectOverview />} />
+          <Route path="/cyber/projects/:id/refine" element={<CyberRefinementRun />} />
+        </Route>
+
+        {/* Routes WITHOUT sidebar (full-page) */}
+        <Route path="/create" element={<CreateMethod />} />
+        <Route path="/create/sources" element={<CreateSources />} />
+        <Route path="/cyber/projects/new" element={<CreateCyberProject />} />
+        <Route path="/projects/:id/refine" element={<RefinePage />} />
+        <Route path="/projects/:id/complete" element={<Complete />} />
+        <Route path="/projects/:id/transform" element={<Transform />} />
       </Route>
 
-      {/* Routes WITHOUT sidebar (full-page) */}
-      <Route path="/create" element={<CreateMethod />} />
-      <Route path="/create/sources" element={<CreateSources />} />
-      <Route path="/cyber/projects/new" element={<CreateCyberProject />} />
-      <Route path="/projects/:id/refine" element={<RefinePage />} />
-      <Route path="/projects/:id/complete" element={<Complete />} />
-      <Route path="/projects/:id/transform" element={<Transform />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

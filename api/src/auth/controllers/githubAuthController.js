@@ -55,14 +55,64 @@ const getAuthFrontendBase = (req) => {
   try {
     const url =
       new URL(configured);
-    if (url.hostname.startsWith("app.")) {
-      url.hostname =
-        url.hostname.slice(4);
-    }
     return url.toString().replace(/\/$/, "");
   } catch {
     return configured;
   }
+};
+
+const isAllowedFrontendOrigin = (origin) => {
+  try {
+    const url =
+      new URL(origin);
+    return (
+      url.origin === "https://intelrefinery.site" ||
+      url.origin === "https://app.intelrefinery.site" ||
+      url.origin === "http://localhost:5173" ||
+      url.origin === "http://127.0.0.1:5173"
+    );
+  } catch {
+    return false;
+  }
+};
+
+const encodeState = (payload) =>
+  Buffer.from(JSON.stringify(payload)).toString("base64url");
+
+const decodeState = (state) => {
+  try {
+    return JSON.parse(Buffer.from(state || "", "base64url").toString("utf8"));
+  } catch {
+    return {};
+  }
+};
+
+const getRequestedFrontendBase = (req) => {
+  const requested =
+    req.query.frontend_origin;
+
+  if (
+    requested &&
+    isAllowedFrontendOrigin(requested)
+  ) {
+    return String(requested).replace(/\/$/, "");
+  }
+
+  return getAuthFrontendBase(req);
+};
+
+const getCallbackFrontendBase = (req) => {
+  const state =
+    decodeState(req.query.state);
+
+  if (
+    state.frontendOrigin &&
+    isAllowedFrontendOrigin(state.frontendOrigin)
+  ) {
+    return String(state.frontendOrigin).replace(/\/$/, "");
+  }
+
+  return getAuthFrontendBase(req);
 };
 
 const githubRedirect =
@@ -77,6 +127,8 @@ const githubRedirect =
 
     const callbackUrl =
       `${getApiBase(req)}/auth/github/callback`;
+    const frontendBase =
+      getRequestedFrontendBase(req);
 
     const params =
       new URLSearchParams({
@@ -87,7 +139,10 @@ const githubRedirect =
         scope:
           "user:email",
         state:
-          "intel-engine"
+          encodeState({
+            frontendOrigin:
+              frontendBase
+          })
       });
 
     res.redirect(
@@ -98,7 +153,7 @@ const githubRedirect =
 const githubCallback =
   async (req, res) => {
     const frontendBase =
-      getAuthFrontendBase(req);
+      getCallbackFrontendBase(req);
 
     try {
       const {

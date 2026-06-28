@@ -12,7 +12,7 @@ export default function CTA() {
           Build Smarter Conversation Intelligence
         </h2>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <a href="https://app.intelrefinery.site" className="hud-button">
+          <a href="https://app.intelrefinery.site/signup" className="hud-button">
             Get API Key
             <ArrowRight className="h-4 w-4" />
           </a>
