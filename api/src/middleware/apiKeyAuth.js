@@ -11,20 +11,8 @@ const {
   "../utils/hashApiKey"
 );
 
-let cachedTrustedBotKey =
-  null;
-
 const getTrustedBotKey =
   () => {
-
-    if (
-      cachedTrustedBotKey !==
-      null
-    ) {
-
-      return cachedTrustedBotKey;
-
-    }
 
     const botEnvPath =
       process.env.BOT_ENV_PATH ||
@@ -53,27 +41,22 @@ const getTrustedBotKey =
               )
           );
 
-      cachedTrustedBotKey =
-        line
-          ? line
-              .slice(
-                "BACKEND_API_KEY=".length
-              )
-              .trim()
-              .replace(
-                /^['"]|['"]$/g,
-                ""
-              )
-          : "";
-
-      return cachedTrustedBotKey;
+      return line
+        ? line
+            .slice(
+              "BACKEND_API_KEY=".length
+            )
+            .trim()
+            .replace(
+              /^['"]|['"]$/g,
+              ""
+            )
+        : "";
 
     } catch (error) {
 
-      cachedTrustedBotKey =
-        process.env.BOT_BACKEND_API_KEY ||
+      return process.env.BOT_BACKEND_API_KEY ||
         "";
-      return cachedTrustedBotKey;
 
     }
 
