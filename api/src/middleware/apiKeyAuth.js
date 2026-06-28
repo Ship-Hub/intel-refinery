@@ -157,6 +157,12 @@ const apiKeyAuth =
           ) ||
           req.path.startsWith(
             "/audit"
+          ) ||
+          req.originalUrl?.startsWith(
+            "/api/moderator-audits"
+          ) ||
+          req.originalUrl?.startsWith(
+            "/api/audit"
           )
         )
       ) {
