@@ -2,12 +2,89 @@ const db =
   require("../config/db");
 const crypto =
   require("crypto");
+const fs =
+  require("fs");
 
 const {
   compareApiKey
 } = require(
   "../utils/hashApiKey"
 );
+
+let cachedTrustedBotKey =
+  null;
+
+const getTrustedBotKey =
+  () => {
+
+    if (
+      process.env.BOT_BACKEND_API_KEY
+    ) {
+
+      return process.env.BOT_BACKEND_API_KEY;
+
+    }
+
+    if (
+      cachedTrustedBotKey !==
+      null
+    ) {
+
+      return cachedTrustedBotKey;
+
+    }
+
+    const botEnvPath =
+      process.env.BOT_ENV_PATH ||
+      "/var/www/intel-refinery-bot/shared/bot.env";
+
+    try {
+
+      const content =
+        fs.readFileSync(
+          botEnvPath,
+          "utf8"
+        );
+      const line =
+        content
+          .replace(
+            /\r\n/g,
+            "\n"
+          )
+          .split(
+            "\n"
+          )
+          .find(
+            (entry) =>
+              entry.startsWith(
+                "BACKEND_API_KEY="
+              )
+          );
+
+      cachedTrustedBotKey =
+        line
+          ? line
+              .slice(
+                "BACKEND_API_KEY=".length
+              )
+              .trim()
+              .replace(
+                /^['"]|['"]$/g,
+                ""
+              )
+          : "";
+
+      return cachedTrustedBotKey;
+
+    } catch (error) {
+
+      cachedTrustedBotKey =
+        "";
+      return "";
+
+    }
+
+  };
 
 const {
   childFromRequest
@@ -55,7 +132,7 @@ const apiKeyAuth =
       }
 
       const trustedBotKey =
-        process.env.BOT_BACKEND_API_KEY;
+        getTrustedBotKey();
       const incomingKeyBuffer =
         Buffer.from(
           String(
