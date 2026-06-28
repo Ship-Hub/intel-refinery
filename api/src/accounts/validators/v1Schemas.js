@@ -34,11 +34,22 @@ const updateProjectV1Schema = z.object({
 });
 
 const createSourceV1Schema = z.object({
-  projectId: z.string().uuid(),
   sourceType: z.enum(["text", "pdf", "image", "url", "audio"]),
   title: z.string().max(500).optional().nullable(),
   uri: z.string().max(1000).optional().nullable(),
   content: z.string().max(100000).optional().nullable(),
+  sourceCategory: z.enum(cyberSourceCategories).optional().nullable(),
+  sourcePackageId: z.string().uuid().optional().nullable(),
+  displayName: z.string().max(500).optional().nullable(),
+  sourceNotes: z.string().max(5000).optional().nullable(),
+});
+
+const createSourcePackageV1Schema = z.object({
+  name: z.string().min(1).max(255),
+  packageType: z.string().max(100).optional().nullable(),
+  description: z.string().max(5000).optional().nullable(),
+  sourceSystem: z.string().max(255).optional().nullable(),
+  metadata: z.record(z.string(), z.any()).optional().nullable(),
 });
 
 const updateSourceV1Schema = z.object({
@@ -65,6 +76,7 @@ module.exports = {
   createProjectV1Schema,
   updateProjectV1Schema,
   createSourceV1Schema,
+  createSourcePackageV1Schema,
   updateSourceV1Schema,
   createApiKeyV1Schema,
   triggerRefineV1Schema,

@@ -4,6 +4,8 @@ import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
 import CreateMethod from "./pages/CreateMethod";
 import CreateSources from "./pages/CreateSources";
+import CreateCyberProject from "./pages/CreateCyberProject";
+import CyberProjectWorkspace from "./pages/CyberProjectWorkspace";
 import RefinePage from "./pages/RefinePage";
 import Complete from "./pages/Complete";
 import Transform from "./pages/Transform";
@@ -15,11 +17,13 @@ export default function WorkspaceRoutes() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/projects" element={<Projects />} />
+        <Route path="/cyber/projects/:id/workspace" element={<CyberProjectWorkspace />} />
       </Route>
 
       {/* Routes WITHOUT sidebar (full-page) */}
       <Route path="/create" element={<CreateMethod />} />
       <Route path="/create/sources" element={<CreateSources />} />
+      <Route path="/cyber/projects/new" element={<CreateCyberProject />} />
       <Route path="/projects/:id/refine" element={<RefinePage />} />
       <Route path="/projects/:id/complete" element={<Complete />} />
       <Route path="/projects/:id/transform" element={<Transform />} />

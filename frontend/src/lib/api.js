@@ -76,6 +76,50 @@ const request =
     return payload.data;
   };
 
+const formRequest =
+  async (
+    path,
+    formData,
+    {
+      method =
+        "POST",
+      sessionToken =
+        getStoredSessionToken()
+    } = {}
+  ) => {
+    const response =
+      await fetch(
+        `${API_BASE_URL}${path}`,
+        {
+          method,
+          headers: {
+            ...(sessionToken
+              ? {
+                  Authorization:
+                    `Bearer ${sessionToken}`
+                }
+              : {})
+          },
+          body:
+            formData
+        }
+      );
+    const payload =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !payload.success
+    ) {
+      throw new Error(
+        payload.error ||
+          "Request failed"
+      );
+    }
+
+    return payload.data;
+  };
+
 export const api =
   {
     docs:
@@ -327,5 +371,54 @@ export const api =
 
     getRun:
       (projectId, runId) =>
-        request(`/api/projects/${projectId}/runs/${runId}`)
+        request(`/api/projects/${projectId}/runs/${runId}`),
+
+    // â”€â”€ Cyber Refinery v1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    v1Projects:
+      () =>
+        request("/api/v1/projects"),
+
+    createV1Project:
+      (body) =>
+        request("/api/v1/projects", { method: "POST", body }),
+
+    getV1Project:
+      (projectId) =>
+        request(`/api/v1/projects/${projectId}`),
+
+    updateV1Project:
+      (projectId, body) =>
+        request(`/api/v1/projects/${projectId}`, { method: "PATCH", body }),
+
+    v1ProjectSources:
+      (projectId) =>
+        request(`/api/v1/projects/${projectId}/sources`),
+
+    createV1RawSource:
+      (projectId, body) =>
+        request(`/api/v1/projects/${projectId}/sources/raw`, { method: "POST", body }),
+
+    createV1UrlSource:
+      (projectId, body) =>
+        request(`/api/v1/projects/${projectId}/sources/url`, { method: "POST", body }),
+
+    uploadV1Source:
+      (projectId, formData) =>
+        formRequest(`/api/v1/projects/${projectId}/sources/upload`, formData),
+
+    updateV1Source:
+      (projectId, sourceId, body) =>
+        request(`/api/v1/projects/${projectId}/sources/${sourceId}`, { method: "PATCH", body }),
+
+    v1SourcePackages:
+      (projectId) =>
+        request(`/api/v1/projects/${projectId}/source-packages`),
+
+    createV1SourcePackage:
+      (projectId, body) =>
+        request(`/api/v1/projects/${projectId}/source-packages`, { method: "POST", body }),
+
+    cyberReadiness:
+      (projectId) =>
+        request(`/api/v1/projects/${projectId}/cyber/readiness`)
   };

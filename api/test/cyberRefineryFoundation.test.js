@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 const {
   createProjectV1Schema,
   updateProjectV1Schema,
+  createSourceV1Schema,
+  createSourcePackageV1Schema,
   updateSourceV1Schema,
 } = require("../src/accounts/validators/v1Schemas");
 const { calculateCyberReadiness } = require("../src/refinery/readiness/cyberReadinessService");
@@ -49,6 +51,32 @@ test("v1 source update schema accepts Cyber source workspace fields", () => {
 
   assert.equal(parsed.sourceCategory, "vulnerability_scan");
   assert.equal(parsed.inclusionState, "needs_review");
+});
+
+test("v1 source create schema accepts package and Cyber category fields", () => {
+  const parsed = createSourceV1Schema.parse({
+    sourceType: "url",
+    uri: "https://example.com/advisory?id=123",
+    sourceCategory: "security_advisory",
+    sourcePackageId: "11111111-1111-4111-8111-111111111111",
+    displayName: "Vendor advisory",
+  });
+
+  assert.equal(parsed.sourceType, "url");
+  assert.equal(parsed.sourceCategory, "security_advisory");
+  assert.equal(parsed.displayName, "Vendor advisory");
+});
+
+test("v1 source package schema accepts manual ingestion packages", () => {
+  const parsed = createSourcePackageV1Schema.parse({
+    name: "June scanner export",
+    packageType: "manual_ingestion",
+    sourceSystem: "tenable",
+    metadata: { exportedBy: "analyst" },
+  });
+
+  assert.equal(parsed.name, "June scanner export");
+  assert.equal(parsed.sourceSystem, "tenable");
 });
 
 test("Cyber readiness blocks projects with no sources", () => {

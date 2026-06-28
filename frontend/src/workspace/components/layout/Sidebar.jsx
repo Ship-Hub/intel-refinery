@@ -9,11 +9,13 @@ const ICONS = {
   integrations: (a) => (<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke={a} strokeWidth="1.1"/><path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13" stroke={a} strokeWidth="1"/></svg>),
   settings: (a) => (<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke={a} strokeWidth="1.1"/><path d="M4.5 7h5M4.5 5h5M4.5 9h3" stroke={a} strokeWidth="1" strokeLinecap="round"/></svg>),
   billing: (a) => (<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3.5" width="12" height="8" rx="1.5" stroke={a} strokeWidth="1.1"/><path d="M4.5 3.5v-1a1.5 1.5 0 0 1 3 0v1" stroke={a} strokeWidth="1.1"/></svg>),
+  cyber: (a) => (<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5l5 2.2v3.4c0 3-2 4.8-5 5.4-3-.6-5-2.4-5-5.4V3.7l5-2.2Z" stroke={a} strokeWidth="1.1" strokeLinejoin="round"/><path d="M4.5 7.1l1.6 1.6 3.4-3.5" stroke={a} strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/></svg>),
 };
 
 const WORKSPACE = [
   { to: "/", key: "home", label: "Home", end: true },
   { to: "/projects", key: "projects", label: "Projects" },
+  { to: "/cyber/projects/new", key: "cyber", label: "Cyber Refinery" },
   { to: "/sources", key: "sources", label: "Sources" },
   { to: "/trash", key: "trash", label: "Trash" },
 ];

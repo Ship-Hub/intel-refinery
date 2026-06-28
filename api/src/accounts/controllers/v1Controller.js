@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const fs = require("fs/promises");
 const db = require("../../config/db");
 const { successResponse, errorResponse } = require("../../middleware/apiResponse");
 const { createApiKey: createApiKeyService, listApiKeys, revokeApiKey } = require("../services/apiKeyService");
@@ -7,6 +8,45 @@ const { buildPaginatedResponse, encodeCursor } = require("../../middleware/pagin
 const { requireProfileByKey } = require("../../refinery/profiles/profileService");
 const { REFINERY_PROFILE_KEYS } = require("../../refinery/profiles/profileConstants");
 const { calculateCyberReadiness } = require("../../refinery/readiness/cyberReadinessService");
+const ingestionRegistry = require("../../ingestion/registry");
+const { generateFileHash } = require("../../security/generateFileHash");
+const { validateUpload } = require("../../security/validateUpload");
+
+const getAccountId = (req) => req.account?.id || req.apiKey?.account_id;
+
+const verifyProjectOwner = async (projectId, accountId) => {
+  const [rows] = await db.promise().query(
+    "SELECT id FROM projects WHERE id = ? AND account_id = ? LIMIT 1",
+    [projectId, accountId]
+  );
+  return rows[0] || null;
+};
+
+const normalizeSourceResponse = (source) => ({
+  id: source.id,
+  projectId: source.project_id || source.projectId,
+  sourceType: source.source_type || source.sourceType,
+  sourceCategory: source.source_category || source.sourceCategory || null,
+  inclusionState: source.inclusion_state || source.inclusionState || "included",
+  sourcePackageId: source.source_package_id || source.sourcePackageId || null,
+  originalName: source.original_name || source.originalName || null,
+  displayName: source.display_name || source.displayName || null,
+  title: source.title || null,
+  uri: source.uri || null,
+  status: source.status,
+  sourceNotes: source.source_notes || source.sourceNotes || null,
+  createdAt: source.created_at || source.createdAt || null,
+  updatedAt: source.updated_at || source.updatedAt || null,
+});
+
+const inferSourceTypeFromFile = (file) => {
+  const mimeType = file.mimetype || "";
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("text/") || mimeType === "text/markdown" || mimeType === "application/json") return "text";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "text";
+};
 
 const getProjects = async (req, res) => {
   try {
@@ -177,6 +217,223 @@ const getSources = async (req, res) => {
     const result = buildPaginatedResponse(rows, limit, (last) => encodeCursor(last.createdAt, last.id));
     return successResponse(res, result.items, { requestId: req.requestId, nextCursor: result.nextCursor, hasMore: result.hasMore });
   } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const listSourcePackagesV1 = async (req, res) => {
+  try {
+    const accountId = getAccountId(req);
+    const project = await verifyProjectOwner(req.params.projectId, accountId);
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    const [rows] = await db.promise().query(
+      `SELECT id, project_id AS projectId, name, package_type AS packageType,
+              description, source_system AS sourceSystem, metadata,
+              created_at AS createdAt, updated_at AS updatedAt
+       FROM source_packages
+       WHERE project_id = ?
+       ORDER BY created_at DESC, id DESC`,
+      [req.params.projectId]
+    );
+
+    return successResponse(res, rows, { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const createSourcePackageV1 = async (req, res) => {
+  try {
+    const accountId = getAccountId(req);
+    const project = await verifyProjectOwner(req.params.projectId, accountId);
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    const id = crypto.randomUUID();
+    const { name, packageType, description, sourceSystem, metadata } = req.validatedBody;
+    await db.promise().query(
+      `INSERT INTO source_packages (id, project_id, name, package_type, description, source_system, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        req.params.projectId,
+        name,
+        packageType || null,
+        description || null,
+        sourceSystem || null,
+        metadata ? JSON.stringify(metadata) : null,
+      ]
+    );
+
+    const [rows] = await db.promise().query(
+      `SELECT id, project_id AS projectId, name, package_type AS packageType,
+              description, source_system AS sourceSystem, metadata,
+              created_at AS createdAt, updated_at AS updatedAt
+       FROM source_packages
+       WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    return successResponse(res, rows[0], { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const createRawSourceV1 = async (req, res) => {
+  try {
+    const accountId = getAccountId(req);
+    const project = await verifyProjectOwner(req.params.projectId, accountId);
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    const { title, content, sourceCategory, sourcePackageId, displayName, sourceNotes } = req.validatedBody;
+    if (!content) return errorResponse(res, 400, "content is required", { requestId: req.requestId });
+
+    const sourceId = crypto.randomUUID();
+    const adapter = ingestionRegistry.get("text");
+    let metadata = {};
+    if (adapter?.processRaw) {
+      const result = await adapter.processRaw(content);
+      metadata = result.metadata || {};
+    }
+
+    await db.promise().query(
+      `INSERT INTO sources (
+         id, project_id, source_package_id, source_type, source_category,
+         title, display_name, raw_text, extracted_text, metadata,
+         status, inclusion_state, source_notes
+       )
+       VALUES (?, ?, ?, 'raw_text', ?, ?, ?, ?, ?, ?, 'normalized', 'included', ?)`,
+      [
+        sourceId,
+        req.params.projectId,
+        sourcePackageId || null,
+        sourceCategory || "analyst_notes",
+        title || displayName || "Pasted Information",
+        displayName || title || "Pasted Information",
+        content,
+        content,
+        JSON.stringify(metadata),
+        sourceNotes || null,
+      ]
+    );
+
+    await db.promise().query("UPDATE projects SET source_count = source_count + 1 WHERE id = ?", [req.params.projectId]);
+    const [rows] = await db.promise().query("SELECT * FROM sources WHERE id = ? LIMIT 1", [sourceId]);
+    return successResponse(res, normalizeSourceResponse(rows[0]), { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const createUrlSourceV1 = async (req, res) => {
+  try {
+    const accountId = getAccountId(req);
+    const project = await verifyProjectOwner(req.params.projectId, accountId);
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    const { title, uri, sourceCategory, sourcePackageId, displayName, sourceNotes } = req.validatedBody;
+    if (!uri) return errorResponse(res, 400, "uri is required", { requestId: req.requestId });
+
+    const sourceId = crypto.randomUUID();
+    const adapter = ingestionRegistry.get("url");
+    let extractedText = "";
+    let metadata = { url: uri };
+    if (adapter?.processUrl) {
+      const result = await adapter.processUrl(uri);
+      extractedText = result.text || "";
+      metadata = { ...metadata, ...(result.metadata || {}) };
+    }
+
+    await db.promise().query(
+      `INSERT INTO sources (
+         id, project_id, source_package_id, source_type, source_category,
+         title, display_name, uri, extracted_text, metadata,
+         status, inclusion_state, source_notes
+       )
+       VALUES (?, ?, ?, 'url', ?, ?, ?, ?, ?, ?, ?, 'included', ?)`,
+      [
+        sourceId,
+        req.params.projectId,
+        sourcePackageId || null,
+        sourceCategory || "security_advisory",
+        title || metadata.title || uri,
+        displayName || title || metadata.title || uri,
+        uri,
+        extractedText,
+        JSON.stringify(metadata),
+        extractedText ? "normalized" : "pending",
+        sourceNotes || null,
+      ]
+    );
+
+    await db.promise().query("UPDATE projects SET source_count = source_count + 1 WHERE id = ?", [req.params.projectId]);
+    const [rows] = await db.promise().query("SELECT * FROM sources WHERE id = ? LIMIT 1", [sourceId]);
+    return successResponse(res, normalizeSourceResponse(rows[0]), { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const uploadSourceV1 = async (req, res) => {
+  try {
+    const accountId = getAccountId(req);
+    const project = await verifyProjectOwner(req.params.projectId, accountId);
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+    if (!req.file) return errorResponse(res, 400, "No source file uploaded", { requestId: req.requestId });
+
+    const validation = validateUpload(req.file);
+    if (!validation.success) {
+      await fs.unlink(req.file.path).catch(() => {});
+      return errorResponse(res, 400, validation.error, { requestId: req.requestId, acceptedFileTypes: validation.acceptedFileTypes });
+    }
+
+    const sourceId = crypto.randomUUID();
+    const sourceType = inferSourceTypeFromFile(req.file);
+    const adapter = ingestionRegistry.get(sourceType);
+    const fileHash = await generateFileHash(req.file.path);
+    let extractedText = "";
+    let metadata = { originalMimeType: req.file.mimetype };
+
+    if (adapter?.processFile) {
+      try {
+        const result = await adapter.processFile(req.file.path, req.file.originalname);
+        extractedText = result.text || "";
+        metadata = { ...metadata, ...(result.metadata || {}) };
+      } catch (err) {
+        metadata.ingestionError = err.message;
+      }
+    }
+
+    await db.promise().query(
+      `INSERT INTO sources (
+         id, project_id, source_package_id, source_type, source_category,
+         original_name, title, display_name, uri, extracted_text, metadata,
+         content_hash, status, inclusion_state, source_notes
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', ?)`,
+      [
+        sourceId,
+        req.params.projectId,
+        req.body.sourcePackageId || null,
+        sourceType,
+        req.body.sourceCategory || "other",
+        req.file.originalname,
+        req.body.title || req.file.originalname,
+        req.body.displayName || req.body.title || req.file.originalname,
+        req.file.path,
+        extractedText,
+        JSON.stringify(metadata),
+        fileHash,
+        extractedText ? "normalized" : "pending",
+        req.body.sourceNotes || null,
+      ]
+    );
+
+    await db.promise().query("UPDATE projects SET source_count = source_count + 1 WHERE id = ?", [req.params.projectId]);
+    const [rows] = await db.promise().query("SELECT * FROM sources WHERE id = ? LIMIT 1", [sourceId]);
+    return successResponse(res, normalizeSourceResponse(rows[0]), { requestId: req.requestId });
+  } catch (err) {
+    if (req.file?.path) await fs.unlink(req.file.path).catch(() => {});
     return errorResponse(res, 500, err.message, { requestId: req.requestId });
   }
 };
@@ -453,6 +710,11 @@ module.exports = {
   updateProjectV1,
   deleteProjectV1,
   getSources,
+  createRawSourceV1,
+  createUrlSourceV1,
+  uploadSourceV1,
+  listSourcePackagesV1,
+  createSourcePackageV1,
   updateSourceV1,
   getCyberReadiness,
   getArtifacts,

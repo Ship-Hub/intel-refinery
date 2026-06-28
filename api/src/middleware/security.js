@@ -4,6 +4,34 @@ const BLOCKED_HOSTS = ["169.254.169.254", "0.0.0.0", "127.0.0.1", "localhost", "
 const BLOCKED_RANGES = ["10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.", "192.168."];
 const DANGEROUS_PATTERNS = [/['"`;|=(){}[\]<>]/, /\/\*/, /--/, /union.*select/i, /drop.*table/i, /exec\s*\(/i, /xp_cmdshell/i, /pg_sleep/i, /waitfor\s+delay/i];
 
+const isUrlField = (key, value) => {
+  if (key !== "url" && key !== "uri") return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const FREEFORM_FIELDS = new Set([
+  "content",
+  "text",
+  "rawText",
+  "raw_text",
+  "sourceNotes",
+  "source_notes",
+  "description",
+  "guidancePrompt",
+  "guidance_prompt",
+  "title",
+  "displayName",
+  "display_name",
+  "name",
+]);
+
+const isFreeformField = (key) => FREEFORM_FIELDS.has(key);
+
 const ssrfProtection = (req, res, next) => {
   const urlsToCheck = [];
   if (req.body?.url) urlsToCheck.push(req.body.url);
@@ -34,9 +62,11 @@ const sanitizeInput = (req, res, next) => {
       const val = obj[key];
       const fullPath = path ? `${path}.${key}` : key;
       if (typeof val === "string") {
-        for (const pattern of DANGEROUS_PATTERNS) {
-          if (pattern.test(val)) {
-            return res.status(400).json({ success: false, error: `Potentially dangerous input detected in field: ${fullPath}` });
+        if (!isUrlField(key, val) && !isFreeformField(key)) {
+          for (const pattern of DANGEROUS_PATTERNS) {
+            if (pattern.test(val)) {
+              return res.status(400).json({ success: false, error: `Potentially dangerous input detected in field: ${fullPath}` });
+            }
           }
         }
         obj[key] = val
