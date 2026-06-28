@@ -7,7 +7,11 @@ const router = express.Router();
 // Create project
 router.post("/", async (req, res) => {
   try {
-    const { title, description, workspace_id, guidance_prompt, mode } = req.body;
+    const { title: titleFromBody, name, description, workspace_id, guidance_prompt, mode } = req.body;
+    const title = titleFromBody || name;
+    if (!title) {
+      return res.status(400).json({ success: false, error: "Project title is required" });
+    }
     const accountId = req.account?.id || req.apiKey?.account_id;
     const id = uuidv4();
 
