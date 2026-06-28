@@ -37,3 +37,16 @@ jobs:
             echo "== intel refinery recent logs =="
             pm2 logs intel-refinery-api --nostream --lines 20 || true
             pm2 logs intel-refinery-bot --nostream --lines 20 || true
+            echo "== bot api auth probe =="
+            BOT_KEY="$(grep -E '^BACKEND_API_KEY=' /var/www/intel-refinery-bot/shared/bot.env | tail -1 | cut -d= -f2- | sed 's/\r$//')"
+            API_PID="$(pm2 pid intel-refinery-api || true)"
+            if [ -n "$API_PID" ] && [ -r "/proc/$API_PID/environ" ]; then
+              tr '\0' '\n' < "/proc/$API_PID/environ" | grep -q '^BOT_BACKEND_API_KEY=' && echo "api env has bot key: yes" || echo "api env has bot key: no"
+            fi
+            if [ -n "$BOT_KEY" ]; then
+              curl -sS -o /tmp/intel-refinery-bot-auth-probe.json -w "bot auth status: %{http_code}\n" -H "x-api-key: $BOT_KEY" "http://127.0.0.1:5000/api/moderator-audits/monitors?platform=telegram" || true
+              sed -E 's/"error":"[^"]+"/"error":"<redacted>"/g' /tmp/intel-refinery-bot-auth-probe.json || true
+              echo
+            else
+              echo "bot key present: no"
+            fi
