@@ -1,6 +1,12 @@
 const { v4: uuidv4 } = require("uuid");
 const pool = require("../config/db").promise();
 
+const toMysqlDateTime = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 19).replace("T", " ");
+};
+
 const persist = {
   // ── Source Chunks ──────────────────────────────────────────────────────────
 
@@ -208,7 +214,7 @@ const persist = {
     if (updates.modelsUsed) { fields.push("models_used = ?"); params.push(JSON.stringify(updates.modelsUsed)); }
     if (updates.totalCost !== undefined) { fields.push("total_estimated_cost = ?"); params.push(updates.totalCost); }
     if (updates.durationMs !== undefined) { fields.push("duration_ms = ?"); params.push(updates.durationMs); }
-    if (updates.completedAt) { fields.push("completed_at = ?"); params.push(updates.completedAt); }
+    if (updates.completedAt) { fields.push("completed_at = ?"); params.push(toMysqlDateTime(updates.completedAt)); }
     if (updates.errorMessage) { fields.push("error_message = ?"); params.push(updates.errorMessage); }
 
     if (fields.length === 0) return;

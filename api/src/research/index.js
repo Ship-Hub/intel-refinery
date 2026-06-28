@@ -65,7 +65,7 @@ async function executeProtocol(protocolId, input, options = {}) {
 
   // Parse the raw text output
   const defaults = options.defaults || getDefaultsForProtocol(protocol);
-  const parsed = safeJsonParse(result.text, defaults);
+  const parsed = normalizeParsedOutput(protocol, safeJsonParse(result.text, defaults), input);
 
   // Validate against protocol schema
   const validation = validators.validate(protocol, parsed);
@@ -114,6 +114,42 @@ function getDefaultsForProtocol(protocol) {
     presentation: { viewType: "report", title: "Refinery Report", structure: { sections: [] }, content: { sections: [], metadata: {} } }
   };
   return stageDefaults[protocol.stage] || {};
+}
+
+function normalizeParsedOutput(protocol, parsed, input = {}) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  if (protocol.stage !== "observation") return parsed;
+
+  const chunks = input.sourceChunks || [];
+  const fallbackChunk = chunks[0] || null;
+  const sourceByChunk = new Map(chunks.map((chunk) => [chunk.id, chunk.sourceId]));
+
+  parsed.artifacts = (parsed.artifacts || []).map((artifact) => ({
+    ...artifact,
+    firstSeenSourceId:
+      artifact.firstSeenSourceId ||
+      artifact.first_seen_source_id ||
+      artifact.sourceId ||
+      artifact.source_id ||
+      fallbackChunk?.sourceId,
+  }));
+
+  parsed.evidence = (parsed.evidence || []).map((item, index) => {
+    const chunkId = item.chunkId || item.chunk_id || item.chunkID || fallbackChunk?.id;
+    return {
+      ...item,
+      artifactIndex: item.artifactIndex ?? item.artifact_index ?? index,
+      sourceId:
+        item.sourceId ||
+        item.source_id ||
+        item.sourceID ||
+        (chunkId ? sourceByChunk.get(chunkId) : null) ||
+        fallbackChunk?.sourceId,
+      chunkId,
+    };
+  });
+
+  return parsed;
 }
 
 module.exports = { executeProtocol, getProtocol, listProtocols };

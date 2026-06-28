@@ -17,6 +17,9 @@ const parseJson = (value, fallback = null) => {
   }
 };
 
+const toMysqlDateTime = (date = new Date()) =>
+  date.toISOString().slice(0, 19).replace("T", " ");
+
 const emitRunEvent = async (context, eventType, stage, message, payload = null) => {
   if (!context.runId || !context.projectId) return;
   await appendRunEvent({
@@ -50,15 +53,24 @@ const loadGraphIntoContext = async (context) => {
   }));
 };
 
-const normalizeEvidence = (evidence, artifactIds = []) =>
+const normalizeEvidence = (evidence, artifactIds = [], sourceChunks = []) => {
+  const fallbackChunk = sourceChunks[0] || null;
+  const chunkSourceById = new Map(sourceChunks.map((chunk) => [chunk.id, chunk.sourceId]));
+  return (
   (evidence || [])
     .map((item) => ({
       ...item,
+      sourceId: item.sourceId || item.source_id || item.sourceID || (
+        item.chunkId && chunkSourceById.get(item.chunkId)
+      ) || fallbackChunk?.sourceId || null,
+      chunkId: item.chunkId || item.chunk_id || item.chunkID || fallbackChunk?.id || null,
       artifactId: item.artifactId || (
         item.artifactIndex !== undefined ? artifactIds[item.artifactIndex] : null
       ),
     }))
-    .filter((item) => item.artifactId && item.sourceId);
+    .filter((item) => item.artifactId && item.sourceId)
+  );
+};
 
 const inferredEvidenceForArtifacts = (artifacts, artifactIds = []) =>
   (artifacts || []).flatMap((artifact, index) => {
@@ -124,7 +136,7 @@ const runNode = async (nodeId, context) => {
         context.artifactIdsByIndex = ids;
 
         const evidence = [
-          ...normalizeEvidence(result.output?.evidence || [], ids),
+          ...normalizeEvidence(result.output?.evidence || [], ids, context.sourceChunks || []),
           ...inferredEvidenceForArtifacts(artifacts, ids),
         ];
         await persist.saveEvidence(projectId, evidence);
@@ -468,6 +480,9 @@ const processProject = async (projectId, options = {}) => {
           errorMessage: status.errors.join("; ")
         });
         await emitRunEvent(status.context, "stage_failed", nodeId, result.error || `${nodeId} failed`);
+        if ([NODES.CHUNK, NODES.OBSERVE].includes(nodeId)) {
+          break;
+        }
         continue;
       }
 
@@ -500,6 +515,9 @@ const processProject = async (projectId, options = {}) => {
         errorMessage: status.errors.join("; ")
       });
       await emitRunEvent(status.context, "stage_failed", nodeId, err.message);
+      if ([NODES.CHUNK, NODES.OBSERVE].includes(nodeId)) {
+        break;
+      }
     }
   }
 
@@ -529,7 +547,7 @@ const processProject = async (projectId, options = {}) => {
     modelsUsed: status.modelsUsed,
     totalCost: status.totalCost,
     durationMs: Date.now() - new Date(status.startedAt).getTime(),
-    completedAt: new Date().toISOString(),
+    completedAt: toMysqlDateTime(),
     ...(hasErrors ? { errorMessage: status.errors.join("; ") } : {})
   });
 
