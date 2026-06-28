@@ -1,0 +1,21 @@
+{
+  "status": "success",
+  "data": {
+    "results": [
+      {
+        "name": "Insecure Deserialization",
+        "description": "The application deserializes untrusted data without validation.",
+        "risk_level": "critical",
+        "cvss": 9.0,
+        "cve_ids": ["CVE-2024-99999"],
+        "affected_component": "com.example:app-core",
+        "file_path": "src/main/java/com/example/Deserializer.java",
+        "line_number": 142
+      }
+    ]
+  },
+  "pagination": {
+    "page": 1,
+    "total": 1
+  }
+}

@@ -4,15 +4,15 @@ const assert =
   require("node:assert/strict");
 const stripe =
   require(
-    "../src/payments/providers/stripeProvider"
+    "../../src/payments/providers/stripeProvider"
   );
 const paystack =
   require(
-    "../src/payments/providers/paystackProvider"
+    "../../src/payments/providers/paystackProvider"
   );
 const coinbase =
   require(
-    "../src/payments/providers/coinbaseCommerceProvider"
+    "../../src/payments/providers/coinbaseCommerceProvider"
   );
 
 test(

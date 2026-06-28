@@ -17,19 +17,20 @@ import HudPanel from "./HudPanel";
 
 // ── Social sign-in button ────────────────────────────────────────────────────
 function OAuthButton({
-  href,
   logo,
   label,
-  bgClass
+  bgClass,
+  onClick
 }) {
   return (
-    <a
-      href={href}
+    <button
+      type="button"
+      onClick={onClick}
       className={`flex w-full items-center justify-center gap-3 border border-white/10 px-4 py-3 font-mono text-sm uppercase tracking-[0.15em] text-white transition hover:border-neon/50 hover:bg-white/5 ${bgClass ?? ""}`}
     >
       {logo}
       <span>{label}</span>
-    </a>
+    </button>
   );
 }
 
@@ -67,6 +68,43 @@ export default function AuthPanel({
   const googleButtonRef =
     useRef(null);
 
+  useEffect(
+    () => {
+      const handleMessage =
+        (event) => {
+          if (
+            event.origin !== window.location.origin ||
+            event.data?.type !== "intel-refinery-auth"
+          ) {
+            return;
+          }
+
+          if (event.data.token) {
+            storeSessionToken(
+              event.data.token
+            );
+            setStatus("");
+            onAuthenticated();
+          } else if (event.data.error) {
+            setStatus(
+              event.data.error
+            );
+          }
+        };
+
+      window.addEventListener(
+        "message",
+        handleMessage
+      );
+      return () =>
+        window.removeEventListener(
+          "message",
+          handleMessage
+        );
+    },
+    [onAuthenticated]
+  );
+
   // Google Sign In
   useEffect(
     () => {
@@ -94,6 +132,8 @@ export default function AuthPanel({
             {
               client_id:
                 clientId,
+              ux_mode:
+                "popup",
               callback:
                 async (
                   response
@@ -194,6 +234,48 @@ export default function AuthPanel({
       }
     };
 
+  const openOAuthPopup =
+    (providerPath) => {
+      const width =
+        520;
+      const height =
+        680;
+      const left =
+        Math.max(
+          0,
+          Math.round(
+            window.screenX +
+              (window.outerWidth - width) /
+                2
+          )
+        );
+      const top =
+        Math.max(
+          0,
+          Math.round(
+            window.screenY +
+              (window.outerHeight - height) /
+                2
+          )
+        );
+
+      const popup =
+        window.open(
+          `${API_BASE_URL}${providerPath}`,
+          "intel-refinery-oauth",
+          `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
+        );
+
+      if (!popup) {
+        setStatus(
+          "Popup blocked. Allow popups for this site and try again."
+        );
+        return;
+      }
+
+      popup.focus();
+    };
+
   return (
     <HudPanel className="mx-auto max-w-xl">
       {/* Header */}
@@ -215,12 +297,12 @@ export default function AuthPanel({
         <p className="font-body text-sm text-chrome">
           Message{" "}
           <a
-            href="https://t.me/dispute_analyzer_bot"
+            href="https://t.me/intel_refinery_bot"
             target="_blank"
             rel="noreferrer"
             className="text-neon underline-offset-2 hover:underline"
           >
-            @dispute_analyzer_bot
+            @intel_refinery_bot
           </a>{" "}
           on Telegram and send the{" "}
           <span className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-white">
@@ -292,14 +374,22 @@ export default function AuthPanel({
 
         {/* GitHub */}
         <OAuthButton
-          href={`${API_BASE_URL}/auth/github`}
+          onClick={() =>
+            openOAuthPopup(
+              "/auth/github"
+            )
+          }
           logo={<GitHubLogo />}
           label="Continue with GitHub"
         />
 
         {/* GitLab */}
         <OAuthButton
-          href={`${API_BASE_URL}/auth/gitlab`}
+          onClick={() =>
+            openOAuthPopup(
+              "/auth/gitlab"
+            )
+          }
           logo={<GitLabLogo />}
           label="Continue with GitLab"
         />

@@ -1,0 +1,5 @@
+{
+  "title": "Finding with invalid severity",
+  "description": "This finding has a non-standard severity value.",
+  "severity": "SUPER_CRITICAL"
+}

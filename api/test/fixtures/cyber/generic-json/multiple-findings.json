@@ -1,0 +1,36 @@
+[
+  {
+    "id": "FIND-001",
+    "title": "SQL Injection in login form",
+    "description": "The login form is vulnerable to SQL injection via the username parameter.",
+    "severity": "critical",
+    "cvss": 9.8,
+    "cve": "CVE-2024-11111",
+    "cwe": "CWE-89",
+    "asset": "login.example.com",
+    "ip": "192.168.1.10",
+    "port": 443
+  },
+  {
+    "id": "FIND-002",
+    "title": "Missing security headers",
+    "description": "The application is missing critical security headers including X-Frame-Options and Content-Security-Policy.",
+    "severity": "medium",
+    "cvss": 5.3,
+    "cwe": "CWE-693",
+    "asset": "www.example.com",
+    "status": "open"
+  },
+  {
+    "id": "FIND-003",
+    "title": "Outdated TLS version",
+    "description": "Server supports TLS 1.0 which is deprecated and vulnerable to known attacks.",
+    "severity": "low",
+    "cvss": 3.1,
+    "cve": "CVE-2011-3389",
+    "asset": "api.example.com",
+    "ip": "10.0.0.5",
+    "port": 8443,
+    "protocol": "tls"
+  }
+]

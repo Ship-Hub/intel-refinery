@@ -1,0 +1,4 @@
+id,title,description,severity,cvss,cve,cwe,host,ip,port,status,first_seen,last_seen
+FIND-001,SQL Injection in login,The login form is vulnerable to SQL injection,critical,9.8,CVE-2024-11111,CWE-89,login.example.com,192.168.1.10,443,open,2024-01-15,2024-06-28
+FIND-002,Missing security headers,Missing X-Frame-Options and CSP headers,medium,5.3,,CWE-693,www.example.com,,,open,2024-02-20,2024-06-28
+FIND-003,Outdated TLS version,Server supports TLS 1.0,low,3.1,CVE-2011-3389,,api.example.com,10.0.0.5,8443,open,2024-03-10,2024-06-28

@@ -1,0 +1,5 @@
+id,title,description,severity
+FIND-001,Buffer Overflow,"This is a multi-line description
+that spans across several lines
+and contains detailed information about the vulnerability",critical
+FIND-002,Simple Finding,This is a single line description,medium

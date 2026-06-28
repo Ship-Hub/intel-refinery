@@ -6,9 +6,9 @@ const {
   createSourceV1Schema,
   createSourcePackageV1Schema,
   updateSourceV1Schema,
-} = require("../src/accounts/validators/v1Schemas");
-const { calculateCyberReadiness } = require("../src/refinery/readiness/cyberReadinessService");
-const { resolveProtocolId } = require("../src/research/protocolResolver");
+} = require("../../src/accounts/validators/v1Schemas");
+const { calculateCyberReadiness } = require("../../src/refinery/readiness/cyberReadinessService");
+const { resolveProtocolId } = require("../../src/research/protocolResolver");
 
 test("v1 project schema accepts Cyber Refinery profile and intent", () => {
   const parsed = createProjectV1Schema.parse({

@@ -14,23 +14,23 @@ const {
   createPlanSchema,
   createSubscriptionSchema
 } = require(
-  "../src/accounts/validators/accountSchemas"
+  "../../src/accounts/validators/accountSchemas"
 );
 const {
   requestTelegramOtpSchema,
   verifyTelegramOtpSchema
 } = require(
-  "../src/auth/validators/telegramOtpSchemas"
+  "../../src/auth/validators/telegramOtpSchemas"
 );
 const {
   generateRawApiKey
 } = require(
-  "../src/accounts/services/apiKeyService"
+  "../../src/accounts/services/apiKeyService"
 );
 const {
   buildApiDocumentation
 } = require(
-  "../src/controllers/apiDocumentation"
+  "../../src/controllers/apiDocumentation"
 );
 
 test(

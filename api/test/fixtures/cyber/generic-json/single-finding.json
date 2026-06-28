@@ -1,0 +1,19 @@
+{
+  "title": "Exposed administrative interface",
+  "description": "The administrative interface is accessible from the public internet without VPN or IP restrictions.",
+  "severity": "high",
+  "cvss": 7.5,
+  "cve": "CVE-2024-12345",
+  "cwe": "CWE-284",
+  "status": "open",
+  "host": "admin.example.com",
+  "ip": "203.0.113.50",
+  "port": 443,
+  "protocol": "https",
+  "first_seen": "2024-01-15T10:30:00Z",
+  "last_seen": "2024-06-28T14:22:00Z",
+  "remediation": "Restrict access to the admin interface using VPN or IP allowlisting.",
+  "references": [
+    "https://owasp.org/www-project-top-ten/2021/A01_2021-Broken_Access_Control"
+  ]
+}

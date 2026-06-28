@@ -269,7 +269,13 @@ router.get("/project/:projectId", async (req, res) => {
 // Get source
 router.get("/:id", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM sources WHERE id = ?", [req.params.id]);
+    const accountId = req.account?.id || req.apiKey?.account_id;
+    const [rows] = await pool.query(
+      `SELECT s.* FROM sources s
+       JOIN projects p ON p.id = s.project_id
+       WHERE s.id = ? AND p.account_id = ?`,
+      [req.params.id, accountId]
+    );
     if (rows.length === 0) {
       return res.status(404).json({ success: false, error: "Source not found" });
     }
@@ -283,7 +289,13 @@ router.get("/:id", async (req, res) => {
 // Delete source
 router.delete("/:id", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM sources WHERE id = ?", [req.params.id]);
+    const accountId = req.account?.id || req.apiKey?.account_id;
+    const [rows] = await pool.query(
+      `SELECT s.* FROM sources s
+       JOIN projects p ON p.id = s.project_id
+       WHERE s.id = ? AND p.account_id = ?`,
+      [req.params.id, accountId]
+    );
     if (rows.length === 0) {
       return res.status(404).json({ success: false, error: "Source not found" });
     }
@@ -311,6 +323,18 @@ router.delete("/:id", async (req, res) => {
 // Get source chunks
 router.get("/:id/chunks", async (req, res) => {
   try {
+    const accountId = req.account?.id || req.apiKey?.account_id;
+    // Verify source belongs to account
+    const [sourceCheck] = await pool.query(
+      `SELECT s.id FROM sources s
+       JOIN projects p ON p.id = s.project_id
+       WHERE s.id = ? AND p.account_id = ?`,
+      [req.params.id, accountId]
+    );
+    if (sourceCheck.length === 0) {
+      return res.status(404).json({ success: false, error: "Source not found" });
+    }
+
     const [rows] = await pool.query(
       "SELECT * FROM source_chunks WHERE source_id = ? ORDER BY chunk_index ASC",
       [req.params.id]

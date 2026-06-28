@@ -10,7 +10,7 @@ process.env.GEMINI_API_KEY =
 const {
   isRetryableProviderError
 } = require(
-  "../src/ai/providers"
+  "../../src/ai/providers"
 );
 
 test(
@@ -42,7 +42,7 @@ test(
   () => {
     const appConfig =
       require(
-        "../src/config/appConfig"
+        "../../src/config/appConfig"
       );
 
     assert.ok(

@@ -1,0 +1,5 @@
+{
+  "description": "A finding without a title.",
+  "severity": "high",
+  "cve": "CVE-2024-55555"
+}

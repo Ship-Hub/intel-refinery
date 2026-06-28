@@ -5,7 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test",
+    "test": "node --test test/unit/**/*.test.js test/cyber/**/*.test.js",
+    "test:unit": "node --test test/unit/**/*.test.js",
+    "test:cyber": "node --test test/cyber/**/*.test.js",
+    "test:integration": "node --test test/integration/**/*.test.js",
+    "test:legacy": "node --test test/archived/**/*.test.js",
     "smoke:payments": "node scripts/paymentProviderSmoke.js all",
     "smoke:payments:stripe": "node scripts/paymentProviderSmoke.js stripe",
     "smoke:payments:paystack": "node scripts/paymentProviderSmoke.js paystack",

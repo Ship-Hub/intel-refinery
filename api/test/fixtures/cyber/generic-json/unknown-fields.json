@@ -1,0 +1,12 @@
+{
+  "title": "Finding with unknown fields",
+  "description": "This finding has fields that are not in the standard schema.",
+  "severity": "medium",
+  "custom_field_1": "custom value 1",
+  "vendor_specific": {
+    "nested": "data",
+    "array": [1, 2, 3]
+  },
+  "internal_score": 42,
+  "tags": ["web", "api", "critical-path"]
+}

@@ -1,0 +1,3 @@
+id,title,description,severity
+FIND-001,"SQL Injection","The login form is vulnerable to SQL injection, which could lead to data theft",critical
+FIND-002,"XSS Vulnerability","Reflected cross-site scripting in search, allowing script execution",high

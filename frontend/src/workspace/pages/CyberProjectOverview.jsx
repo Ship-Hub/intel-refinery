@@ -143,9 +143,20 @@ function FilterBar({ filters, setFilters, sources, showSeverity, showStatus, sho
 }
 
 function ArtifactRow({ artifact, selected, onSelect, meta }) {
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(artifact);
+    }
+  };
+
   return (
     <button
       onClick={() => onSelect(artifact)}
+      onKeyDown={handleKeyDown}
+      role="option"
+      aria-selected={selected}
+      tabIndex={0}
       className={`grid w-full gap-3 rounded-lg border p-4 text-left transition md:grid-cols-[minmax(0,1fr)_170px_auto] md:items-center ${
         selected ? "border-blue-400/45 bg-blue-400/10" : "border-line bg-surface hover:border-blue-400/25 hover:bg-elevated"
       }`}
@@ -300,7 +311,21 @@ function Explorer({ title, description, artifacts, allArtifacts, sources, connec
           </div>
         </div>
         {rows.length === 0 ? (
-          <div className="rounded-lg border border-line bg-surface p-10 text-center text-[13px] text-ink-4">No matching artifacts yet.</div>
+          <div className="rounded-lg border border-line bg-surface p-10 text-center">
+            <div className="text-[13px] text-ink-4">
+              {filters.search || filters.severity || filters.status || filters.sourceId
+                ? "No artifacts match the current filters. Try adjusting your search criteria."
+                : `No ${title.toLowerCase()} have been identified yet. Run refinement to analyze your sources.`}
+            </div>
+            {(filters.search || filters.severity || filters.status || filters.sourceId) && (
+              <button
+                onClick={() => setFilters({})}
+                className="mt-3 text-[12px] text-blue-200 hover:text-blue-100"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
         ) : (
           <div className="grid gap-3">
             {rows.map((artifact) => (
@@ -456,11 +481,26 @@ export default function CyberProjectOverview() {
           {stats.map((stat) => <StatCard key={stat.label} {...stat} />)}
         </div>
 
-        <div className="mb-5 flex flex-wrap gap-2 rounded-lg border border-line bg-surface p-2">
+        <div className="mb-5 flex flex-wrap gap-2 rounded-lg border border-line bg-surface p-2" role="tablist">
           {TABS.map(({ id: tabId, label, icon: Icon }) => (
             <button
               key={tabId}
               onClick={() => setTab(tabId)}
+              role="tab"
+              aria-selected={tab === tabId}
+              aria-controls={`panel-${tabId}`}
+              tabIndex={tab === tabId ? 0 : -1}
+              onKeyDown={(e) => {
+                const tabs = TABS.map((t) => t.id);
+                const currentIndex = tabs.indexOf(tab);
+                if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  setTab(tabs[(currentIndex + 1) % tabs.length]);
+                } else if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  setTab(tabs[(currentIndex - 1 + tabs.length) % tabs.length]);
+                }
+              }}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[12px] font-medium transition ${
                 tab === tabId ? "bg-blue-400 text-bg" : "text-ink-4 hover:bg-bg hover:text-ink-2"
               }`}
@@ -471,9 +511,30 @@ export default function CyberProjectOverview() {
         </div>
 
         {loading ? (
-          <div className="rounded-lg border border-line bg-surface p-10 text-[13px] text-ink-4">Loading Cyber model...</div>
+          <div className="grid gap-4" role="tabpanel" id="panel-loading" aria-label="Loading content">
+            <div className="rounded-lg border border-line bg-surface p-5">
+              <div className="h-6 w-48 animate-pulse rounded bg-bg" />
+              <div className="mt-3 h-4 w-96 animate-pulse rounded bg-bg" />
+              <div className="mt-4 flex gap-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-10 w-32 animate-pulse rounded-md bg-bg" />
+                ))}
+              </div>
+            </div>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="rounded-lg border border-line bg-surface p-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 animate-pulse rounded bg-bg" />
+                  <div className="flex-1">
+                    <div className="h-5 w-64 animate-pulse rounded bg-bg" />
+                    <div className="mt-2 h-4 w-96 animate-pulse rounded bg-bg" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : tab === "overview" ? (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]" role="tabpanel" id="panel-overview" aria-label="Overview panel">
             <main className="grid gap-5">
               <section className="rounded-lg border border-line bg-surface p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
@@ -522,13 +583,20 @@ export default function CyberProjectOverview() {
             <DetailPanel artifact={selectedArtifact} detail={artifactDetail} loading={detailLoading} sources={sources} />
           </div>
         ) : tab === "findings" ? (
-          <Explorer title="Findings explorer" description="Review findings, vulnerabilities, and conflicts with severity, status, source, and project context filters." artifacts={findings} allArtifacts={artifacts} sources={sources} connections={connections} filters={filters} setFilters={setFilters} selectedArtifact={selectedArtifact} onSelect={selectArtifact} detail={artifactDetail} detailLoading={detailLoading} mode="finding" />
+          <div role="tabpanel" id="panel-findings" aria-label="Findings panel">
+            <Explorer title="Findings explorer" description="Review findings, vulnerabilities, and conflicts with severity, status, source, and project context filters." artifacts={findings} allArtifacts={artifacts} sources={sources} connections={connections} filters={filters} setFilters={setFilters} selectedArtifact={selectedArtifact} onSelect={selectArtifact} detail={artifactDetail} detailLoading={detailLoading} mode="finding" />
+          </div>
         ) : tab === "assets" ? (
-          <Explorer title="Assets explorer" description="Inspect assets with exposure, related signals, finding counts, and traceability back to source material." artifacts={assets} allArtifacts={artifacts} sources={sources} connections={connections} filters={filters} setFilters={setFilters} selectedArtifact={selectedArtifact} onSelect={selectArtifact} detail={artifactDetail} detailLoading={detailLoading} mode="asset" />
+          <div role="tabpanel" id="panel-assets" aria-label="Assets panel">
+            <Explorer title="Assets explorer" description="Inspect assets with exposure, related signals, finding counts, and traceability back to source material." artifacts={assets} allArtifacts={artifacts} sources={sources} connections={connections} filters={filters} setFilters={setFilters} selectedArtifact={selectedArtifact} onSelect={selectArtifact} detail={artifactDetail} detailLoading={detailLoading} mode="asset" />
+          </div>
         ) : tab === "actions" ? (
-          <Explorer title="Actions explorer" description="Prioritize recommended actions by urgency, linked findings/assets, status, and supporting evidence." artifacts={actions} allArtifacts={artifacts} sources={sources} connections={connections} filters={filters} setFilters={setFilters} selectedArtifact={selectedArtifact} onSelect={selectArtifact} detail={artifactDetail} detailLoading={detailLoading} mode="action" />
+          <div role="tabpanel" id="panel-actions" aria-label="Actions panel">
+            <Explorer title="Actions explorer" description="Prioritize recommended actions by urgency, linked findings/assets, status, and supporting evidence." artifacts={actions} allArtifacts={artifacts} sources={sources} connections={connections} filters={filters} setFilters={setFilters} selectedArtifact={selectedArtifact} onSelect={selectArtifact} detail={artifactDetail} detailLoading={detailLoading} mode="action" />
+          </div>
         ) : (
-          <section className="rounded-lg border border-line bg-surface p-5">
+          <div role="tabpanel" id="panel-versions" aria-label="Versions panel">
+            <section className="rounded-lg border border-line bg-surface p-5">
             <h2 className="text-[18px] font-semibold text-ink-text">Versions and model history</h2>
             <p className="mt-1 text-[13px] text-ink-4">Each refinement run can produce a frozen model version for comparison and audit.</p>
             <div className="mt-5 grid gap-3">
@@ -549,6 +617,7 @@ export default function CyberProjectOverview() {
               ))}
             </div>
           </section>
+          </div>
         )}
       </div>
     </div>

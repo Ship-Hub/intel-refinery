@@ -14,6 +14,9 @@ const { validateUpload } = require("../../security/validateUpload");
 const persist = require("../../refinery/persistence");
 const { enqueueRun } = require("../../refinery/refinementQueue");
 const { listRunEvents } = require("../../refinery/runEvents");
+require("../../parsers/genericCsvParser");
+require("../../parsers/genericJsonParser");
+const { findParser, listParsers } = require("../../parsers/registry");
 
 const getAccountId = (req) => req.account?.id || req.apiKey?.account_id;
 
@@ -988,6 +991,73 @@ const getModelStatus = async (req, res) => {
   }
 };
 
+const previewSourceParsing = async (req, res) => {
+  try {
+    const accountId = getAccountId(req);
+    const project = await verifyProjectOwner(req.params.projectId, accountId);
+    if (!project) return errorResponse(res, 404, "Project not found", { requestId: req.requestId });
+
+    const { sourceId } = req.params;
+    if (!sourceId) return errorResponse(res, 400, "sourceId is required", { requestId: req.requestId });
+
+    // Get source and verify ownership
+    const [sources] = await db.promise().query(
+      `SELECT s.* FROM sources s
+       WHERE s.id = ? AND s.project_id = ?
+       LIMIT 1`,
+      [sourceId, req.params.projectId]
+    );
+    const source = sources[0];
+    if (!source) return errorResponse(res, 404, "Source not found", { requestId: req.requestId });
+
+    // Prepare parser input
+    const parserInput = {
+      filePath: source.uri && !source.uri.startsWith("http") ? source.uri : undefined,
+      rawText: source.raw_text || source.extracted_text || undefined,
+      mimeType: parseJsonField(source.metadata, {})?.originalMimeType,
+      fileName: source.original_name || undefined,
+    };
+
+    // Find parser
+    const parser = await findParser(parserInput);
+    if (!parser) {
+      return errorResponse(res, 422, "No parser found for this source", {
+        requestId: req.requestId,
+        sourceType: source.source_type,
+        mimeType: parserInput.mimeType,
+      });
+    }
+
+    // Run parser
+    const result = await parser.parse(parserInput);
+
+    return successResponse(res, {
+      parser: {
+        key: result.parserKey,
+        version: result.parserVersion,
+      },
+      recordType: result.recordType,
+      processedRecordCount: result.records.length,
+      rejectedRecordCount: result.rejectedCount,
+      warningCount: result.warnings.length,
+      warnings: result.warnings.slice(0, 50), // Limit warnings in response
+      records: result.records.slice(0, 100), // Limit records in preview
+      metadata: result.metadata,
+    }, { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
+const listParsersV1 = async (req, res) => {
+  try {
+    const parsers = listParsers();
+    return successResponse(res, parsers, { requestId: req.requestId });
+  } catch (err) {
+    return errorResponse(res, 500, err.message, { requestId: req.requestId });
+  }
+};
+
 module.exports = {
   getProjects,
   createProjectV1,
@@ -1013,4 +1083,6 @@ module.exports = {
   getRunStatus,
   streamRunStatus,
   getModelStatus,
+  previewSourceParsing,
+  listParsersV1,
 };

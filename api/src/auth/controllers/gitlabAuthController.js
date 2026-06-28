@@ -171,11 +171,11 @@ const gitlabCallback =
         });
 
       res.redirect(
-        `${frontendBase}/console?token=${encodeURIComponent(session.token)}`
+        `${frontendBase}/auth/callback?token=${encodeURIComponent(session.token)}&provider=gitlab`
       );
     } catch (error) {
       res.redirect(
-        `${frontendBase}/console?error=${encodeURIComponent(error.message)}`
+        `${frontendBase}/auth/callback?error=${encodeURIComponent(error.message)}&provider=gitlab`
       );
     }
   };

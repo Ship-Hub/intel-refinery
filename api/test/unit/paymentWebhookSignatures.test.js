@@ -9,7 +9,7 @@ const {
   verifyCoinbaseSignature,
   verifyStripeSignature
 } = require(
-  "../src/payments/services/signatureService"
+  "../../src/payments/services/signatureService"
 );
 
 test(

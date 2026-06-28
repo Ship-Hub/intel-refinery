@@ -1,0 +1,39 @@
+{
+  "scan_metadata": {
+    "tool": "Example Scanner",
+    "version": "2.0",
+    "scan_date": "2024-06-28T10:00:00Z"
+  },
+  "findings": [
+    {
+      "finding_id": "VULN-001",
+      "title": "Cross-Site Scripting (XSS)",
+      "description": "Reflected XSS vulnerability in search parameter.",
+      "severity": "high",
+      "cvss_score": 6.1,
+      "cwe_id": "CWE-79",
+      "affected_asset": {
+        "hostname": "search.example.com",
+        "ip_address": "198.51.100.25",
+        "port": 443
+      },
+      "first_observed": "2024-03-10",
+      "last_observed": "2024-06-28",
+      "remediation": "Implement input validation and output encoding."
+    },
+    {
+      "finding_id": "VULN-002",
+      "title": "Weak SSH key algorithm",
+      "description": "Server accepts SSH connections using diffie-hellman-group1-sha1 which is considered weak.",
+      "severity": "medium",
+      "cvss_score": 5.0,
+      "cwe_id": "CWE-326",
+      "affected_asset": {
+        "hostname": "ssh.example.com",
+        "ip_address": "198.51.100.30",
+        "port": 22
+      }
+    }
+  ],
+  "total_findings": 2
+}

@@ -16,6 +16,7 @@ test(
           path.join(
             __dirname,
             "..",
+            "..",
             "package.json"
           ),
           "utf8"

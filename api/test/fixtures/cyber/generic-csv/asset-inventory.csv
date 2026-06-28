@@ -1,0 +1,5 @@
+hostname,ip_address,domain,asset_type,os,environment,criticality,owner
+web-server-01,10.0.1.10,www.example.com,web_server,Linux,production,high,ops-team
+db-server-01,10.0.1.20,db.example.com,database_server,Linux,production,critical,dba-team
+app-server-01,10.0.1.30,api.example.com,application_server,Linux,production,high,dev-team
+dev-workstation-01,192.168.1.100,dev.local,workstation,Windows,development,low,developer

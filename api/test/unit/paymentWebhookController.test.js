@@ -5,7 +5,7 @@ const assert =
 const {
   buildWebhookHandler
 } = require(
-  "../src/payments/controllers/webhookController"
+  "../../src/payments/controllers/webhookController"
 );
 
 const createResponse =

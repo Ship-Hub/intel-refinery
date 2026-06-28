@@ -1,10 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createCheckoutSchema } = require("../src/payments/validators/paymentSchemas");
+const { createCheckoutSchema } = require("../../src/payments/validators/paymentSchemas");
 const {
   getProvider,
   listProviderCodes
-} = require("../src/payments/providers");
+} = require("../../src/payments/providers");
 
 test("payment checkout schema accepts provider codes and registry validates support", () => {
   assert.equal(

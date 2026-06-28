@@ -6,7 +6,7 @@ const assert =
 const {
   validateUpload
 } = require(
-  "../src/security/validateUpload"
+  "../../src/security/validateUpload"
 );
 
 test(

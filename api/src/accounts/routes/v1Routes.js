@@ -42,6 +42,8 @@ const {
   getRunStatus,
   streamRunStatus,
   getModelStatus,
+  previewSourceParsing,
+  listParsersV1,
 } = require("../controllers/v1Controller");
 
 const router = express.Router();
@@ -88,6 +90,9 @@ router.get("/projects/:projectId/runs/latest/stream", streamRunStatus);
 router.get("/projects/:projectId/runs/:runId/stream", streamRunStatus);
 router.get("/projects/:projectId/runs/latest", getRunStatus);
 router.get("/projects/:projectId/runs/:runId", getRunStatus);
+
+router.get("/projects/:projectId/sources/:sourceId/parse-preview", previewSourceParsing);
+router.get("/parsers", listParsersV1);
 
 router.get("/usage", getUsage);
 router.get("/api-keys", getApiKeys);

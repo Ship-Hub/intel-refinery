@@ -5,7 +5,7 @@ const assert =
 const {
   googleAuthSchema
 } = require(
-  "../src/auth/validators/authSchemas"
+  "../../src/auth/validators/authSchemas"
 );
 
 test(
