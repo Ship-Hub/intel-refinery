@@ -23,6 +23,10 @@ jobs:
             ls -la /etc/nginx/sites-enabled || true
             echo "== matching server names =="
             grep -R "server_name .*intelrefinery\\|server_name .*aicostpilot\\|ssl_certificate" -n /etc/nginx/sites-enabled /etc/nginx/sites-available 2>/dev/null || true
+            echo "== intel refinery site file =="
+            sed -n '1,220p' /etc/nginx/sites-available/intel-refinery || true
+            echo "== certbot names for intelrefinery =="
+            find /etc/letsencrypt/live -maxdepth 1 -type d -name '*intel*' -print 2>/dev/null || true
             echo "== letsencrypt live =="
             find /etc/letsencrypt/live -maxdepth 2 -type l -o -type f 2>/dev/null | sort || true
             echo "== pm2 =="
