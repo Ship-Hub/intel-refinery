@@ -29,13 +29,13 @@ jobs:
             api/package-lock.json
 
       - name: Build frontend
-        working-directory: frontend
         env:
           VITE_API_BASE_URL: https://api.intelrefinery.site
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
         run: |
-          npm ci
-          npm run build
+          test -f frontend/package-lock.json
+          npm --prefix frontend ci
+          npm --prefix frontend run build
 
       - name: Package release
         run: |
@@ -94,7 +94,7 @@ jobs:
             fi
 
             cd "$RELEASE_DIR/api"
-            npm ci --omit=dev
+            npm ci --omit=dev || npm install --omit=dev
 
             ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
 
