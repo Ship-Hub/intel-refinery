@@ -162,7 +162,7 @@ DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS source_packages (
   id CHAR(36) PRIMARY KEY,
-  project_id CHAR(36) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
   name VARCHAR(255) NOT NULL,
   package_type VARCHAR(100) NULL,
   description TEXT NULL,
@@ -170,8 +170,5 @@ CREATE TABLE IF NOT EXISTS source_packages (
   metadata JSON NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_source_packages_project (project_id),
-  CONSTRAINT fk_source_packages_project
-    FOREIGN KEY (project_id) REFERENCES projects(id)
-    ON DELETE CASCADE
+  INDEX idx_source_packages_project (project_id)
 );
