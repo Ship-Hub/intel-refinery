@@ -1,0 +1,159 @@
+name: Deploy Intel Refinery
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: intel-refinery-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            api/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: https://api.intelrefinery.site
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package release
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='frontend/node_modules' \
+            --exclude='api/node_modules' \
+            --exclude='tg-bot' \
+            --exclude='*.log' \
+            -czf intel-refinery-release.tgz \
+            api frontend/dist frontend/public ecosystem.config.cjs package.json README.md DEPLOYMENT.md
+
+      - name: Upload release bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: ${{ secrets.CONTABO_SSH_PORT }}
+          source: intel-refinery-release.tgz
+          target: /tmp
+
+      - name: Activate release
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          API_ENV_FILE: ${{ secrets.API_ENV_FILE }}
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: ${{ secrets.CONTABO_SSH_PORT }}
+          envs: API_ENV_FILE
+          script: |
+            set -euo pipefail
+
+            APP_DIR=/var/www/intel-refinery
+            RELEASE_DIR="$APP_DIR/releases/${{ github.sha }}"
+            SHARED_DIR="$APP_DIR/shared"
+
+            mkdir -p "$RELEASE_DIR" "$SHARED_DIR"
+            tar -xzf /tmp/intel-refinery-release.tgz -C "$RELEASE_DIR"
+
+            if [ -n "${API_ENV_FILE:-}" ]; then
+              printf '%s\n' "$API_ENV_FILE" > "$SHARED_DIR/api.env"
+              chmod 600 "$SHARED_DIR/api.env"
+            fi
+
+            if [ -f "$SHARED_DIR/api.env" ]; then
+              cp "$SHARED_DIR/api.env" "$RELEASE_DIR/api/.env"
+            else
+              cp "$RELEASE_DIR/api/.env.example" "$RELEASE_DIR/api/.env"
+              sed -i 's/^NODE_ENV=.*/NODE_ENV=production/' "$RELEASE_DIR/api/.env"
+              sed -i 's/^PORT=.*/PORT=5000/' "$RELEASE_DIR/api/.env"
+              sed -i 's|^FRONTEND_BASE_URL=.*|FRONTEND_BASE_URL=https://app.intelrefinery.site|' "$RELEASE_DIR/api/.env"
+            fi
+
+            cd "$RELEASE_DIR/api"
+            npm ci --omit=dev
+
+            ln -sfn "$RELEASE_DIR" "$APP_DIR/current"
+
+            cat > /etc/nginx/sites-available/intel-refinery <<'NGINX'
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name intelrefinery.site www.intelrefinery.site;
+              root /var/www/intel-refinery/current/frontend/dist;
+              index index.html;
+
+              location / {
+                try_files $uri $uri/ /index.html;
+              }
+            }
+
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name app.intelrefinery.site;
+              root /var/www/intel-refinery/current/frontend/dist;
+              index index.html;
+
+              location / {
+                try_files $uri $uri/ /index.html;
+              }
+            }
+
+            server {
+              listen 80;
+              listen [::]:80;
+              server_name api.intelrefinery.site;
+
+              location / {
+                proxy_pass http://127.0.0.1:5000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+              }
+            }
+            NGINX
+
+            ln -sfn /etc/nginx/sites-available/intel-refinery /etc/nginx/sites-enabled/intel-refinery
+            nginx -t
+            systemctl reload nginx
+
+            cd "$APP_DIR/current"
+            if command -v pm2 >/dev/null 2>&1; then
+              pm2 startOrReload ecosystem.config.cjs --update-env
+              pm2 save
+            else
+              npm install -g pm2
+              pm2 start ecosystem.config.cjs --update-env
+              pm2 save
+            fi
+
+            curl -fsS http://127.0.0.1:5000/health >/dev/null
+            curl -fsS -H 'Host: intelrefinery.site' http://127.0.0.1/ >/dev/null
