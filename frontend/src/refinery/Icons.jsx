@@ -40,9 +40,9 @@ export function Glyph({ name, size = 22, stroke = 1.5, className = '' }) {
   );
 }
 
-export function Logo({ size = 26, withWord = true }) {
+export function Logo({ size = 34, withWord = true }) {
   return (
-    <span className="inline-flex items-center gap-[11px] text-ink">
+    <span className="inline-flex items-center gap-3 text-ink-text">
       <img
         src={logoMark}
         alt=""
@@ -50,7 +50,11 @@ export function Logo({ size = 26, withWord = true }) {
         height={size}
         className="shrink-0 object-contain"
       />
-      {withWord && <span className="font-semibold tracking-[0.16em] text-[15px]">INTEL REFINERY</span>}
+      {withWord && (
+        <span className="text-[15px] font-semibold tracking-tight">
+          Intel <span className="text-cyan">Refinery</span>
+        </span>
+      )}
     </span>
   );
 }
