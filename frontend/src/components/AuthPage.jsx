@@ -75,9 +75,7 @@ export default function AuthPage({
     <div className="min-h-screen bg-void text-white">
       <header className="border-b border-neon/15 bg-void/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
-          <a href="/">
-            <Logo />
-          </a>
+          <Logo />
           <a
             href={mode === "signup" ? "/login" : "/signup"}
             className="hud-button-secondary"
