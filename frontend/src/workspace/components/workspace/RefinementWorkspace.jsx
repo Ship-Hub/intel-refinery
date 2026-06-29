@@ -91,16 +91,26 @@ function LogItem({ entry }) {
     <div
       className="rounded-lg border p-3 transition-[box-shadow,border-color] duration-[900ms]"
       style={{
-        background: "#111720",
+        background: "linear-gradient(180deg, rgba(20,28,40,0.98), rgba(15,21,31,0.98))",
         borderColor: entry.glowing ? "rgba(87,216,255,0.28)" : "rgba(255,255,255,0.05)",
         boxShadow: entry.glowing ? "0 0 12px rgba(87,216,255,0.18)" : "none",
         animation: "logIn 0.42s ease",
       }}
     >
-      <div className="mb-1.5 font-mono text-[9.5px] tracking-wide text-[#2D3748]">{entry.ts}</div>
-      <div className="text-[12px] leading-snug text-[#B8BFC9]">{entry.text}</div>
+      <div className="mb-1.5 font-mono text-[9.5px] tracking-wide text-[#7F8DA3]">{entry.ts}</div>
+      <div className="text-[12.5px] leading-snug text-[#D8E4F2]">{entry.text}</div>
+      {entry.items?.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {entry.items.slice(0, 3).map((item, i) => (
+            <div key={`${item.label}-${i}`} className="rounded-[6px] border border-white/[0.06] bg-black/20 px-2 py-1.5">
+              <div className="text-[11.5px] font-medium leading-snug text-[#E6F3FF]">{item.label}</div>
+              {item.detail && <div className="mt-0.5 text-[10.5px] leading-snug text-[#8EA0B8]">{item.detail}</div>}
+            </div>
+          ))}
+        </div>
+      )}
       {entry.detail && (
-        <div className="mt-1.5 border-t border-line pt-1.5 text-[11px] leading-relaxed text-ink-5">{entry.detail}</div>
+        <div className="mt-2 border-t border-line pt-1.5 text-[11px] leading-relaxed text-[#9FB0C8]">{entry.detail}</div>
       )}
     </div>
   );
@@ -118,9 +128,12 @@ function FocusPanel({ focus }) {
       {focus.connected?.length > 0 && (
         <Block heading="RECENTLY CONNECTED">
           {focus.connected.map((c, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="h-[5px] w-[5px] shrink-0 rounded-full" style={{ background: c.color || "#57D8FF" }} />
-              <span className="text-[12.5px] text-[#B8BFC9]">{c.label}</span>
+            <div key={i} className="flex gap-2">
+              <span className="mt-[6px] h-[5px] w-[5px] shrink-0 rounded-full" style={{ background: c.color || "#57D8FF" }} />
+              <span className="min-w-0">
+                <span className="block text-[12.5px] leading-snug text-[#D7E4F2]">{c.label}</span>
+                {c.detail && <span className="mt-0.5 block text-[11px] leading-snug text-[#8EA0B8]">{c.detail}</span>}
+              </span>
             </div>
           ))}
         </Block>
@@ -129,7 +142,7 @@ function FocusPanel({ focus }) {
       {focus.sections?.map((s, i) => (
         <Block key={i} heading={s.heading}>
           {s.items.map((it, j) => (
-            <div key={j} className={`text-[12.5px] ${it.tone === "muted" ? "text-ink-5" : "text-ink-3"}`}>{it.label}</div>
+            <div key={j} className={`text-[12.5px] leading-snug ${it.tone === "muted" ? "text-[#8EA0B8]" : "text-[#C9D6E7]"}`}>{it.label}</div>
           ))}
         </Block>
       ))}

@@ -144,6 +144,167 @@ const buildFallbackView = (modelData = {}) => {
   };
 };
 
+const clampText = (value, maxLength = 96) => {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+};
+
+const humanizeStageError = (message = "") => {
+  const text = String(message || "");
+  if (/413 Request too large|tokens per minute|console\.groq\.com/i.test(text)) {
+    return "Provider context limit hit. Retrying with a smaller evidence packet before trusting this stage.";
+  }
+  if (/Table .*doesn't exist/i.test(text)) {
+    return "A storage table is missing on this environment. The run cannot be trusted until migrations are applied.";
+  }
+  return clampText(text, 220) || "This stage could not complete.";
+};
+
+const sourceLabel = (source = {}) => {
+  const metadata = parseJson(source.metadata, source.metadata || {});
+  const raw =
+    source.originalName ||
+    source.original_name ||
+    source.title ||
+    metadata.originalName ||
+    metadata.fileName ||
+    metadata.title ||
+    source.uri ||
+    metadata.uri ||
+    metadata.url ||
+    source.sourceId ||
+    source.id;
+  try {
+    if (/^https?:\/\//i.test(raw)) {
+      const url = new URL(raw);
+      return clampText(`${url.hostname}${url.pathname === "/" ? "" : url.pathname}`, 72);
+    }
+  } catch { /* ignore invalid URL */ }
+  return clampText(raw, 72);
+};
+
+const artifactType = (artifact = {}) =>
+  String(artifact.artifact_type || artifact.artifactType || artifact.type || "artifact")
+    .replace(/_/g, " ")
+    .trim();
+
+const artifactLabel = (artifact = {}) =>
+  clampText(artifact.title || artifact.name || artifact.summary || artifactType(artifact), 86);
+
+const artifactDetail = (artifact = {}) =>
+  clampText(artifact.summary || artifact.description || artifactType(artifact), 140);
+
+const byScore = (a, b) =>
+  Number(b.importance || 0) + Number(b.confidence || 0) - (Number(a.importance || 0) + Number(a.confidence || 0));
+
+const topArtifacts = (artifacts = [], matcher = null, limit = 3) =>
+  artifacts
+    .filter((artifact) => !matcher || matcher(artifact))
+    .sort(byScore)
+    .slice(0, limit)
+    .map((artifact) => ({
+      label: artifactLabel(artifact),
+      detail: artifactDetail(artifact),
+      kind: artifactType(artifact),
+    }));
+
+const connectionLabel = (connection = {}, artifactsById = new Map()) => {
+  const from = artifactsById.get(connection.from_artifact_id || connection.fromArtifactId);
+  const to = artifactsById.get(connection.to_artifact_id || connection.toArtifactId);
+  return clampText(connection.label || `${artifactLabel(from)} -> ${artifactLabel(to)}`, 96);
+};
+
+const connectionDetail = (connection = {}) =>
+  clampText(connection.explanation || connection.connection_type || connection.connectionType || "Evidence-backed relationship", 150);
+
+const stageSnapshot = (context = {}, stage, result = {}) => {
+  const sources = context.sources || [];
+  const artifacts = context.artifacts || [];
+  const connections = context.connections || [];
+  const artifactsById = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
+  const sourceItems = sources.slice(0, 3).map((source) => ({
+    label: sourceLabel(source),
+    detail: clampText(source.metadata?.sourceType || source.source_type || source.metadata?.sourceCategory || "source", 80),
+    kind: "source",
+  }));
+  const entityItems = topArtifacts(artifacts, (artifact) => {
+    const type = artifactType(artifact).toLowerCase();
+    return /person|account|organization|project|entity|asset/.test(type);
+  });
+  const observationItems = topArtifacts(artifacts, (artifact) => {
+    const type = artifactType(artifact).toLowerCase();
+    return !/question|gap|risk/.test(type);
+  });
+  const questionItems = topArtifacts(artifacts, (artifact) => {
+    const type = artifactType(artifact).toLowerCase();
+    return /question|gap|risk|conflict|contradiction/.test(type);
+  });
+  const connectionItems = connections
+    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0))
+    .slice(0, 3)
+    .map((connection) => ({
+      label: connectionLabel(connection, artifactsById),
+      detail: connectionDetail(connection),
+      kind: connection.connection_type || connection.connectionType || "connection",
+    }));
+
+  const graph = {
+    sources: sourceItems,
+    observations: observationItems,
+    entities: entityItems,
+    connections: connectionItems,
+    questions: questionItems,
+  };
+
+  const counts = {
+    sources: sources.length,
+    chunks: (context.sourceChunks || result.output?.chunks || []).length,
+    artifacts: artifacts.length,
+    connections: connections.length,
+  };
+
+  const firstEntity = entityItems[0];
+  const firstObservation = observationItems[0];
+  const firstConnection = connectionItems[0];
+  const messages = {
+    [NODES.NORMALIZE]: sourceItems.length
+      ? `Prepared ${sources.length} source${sources.length === 1 ? "" : "s"} for refinement, including ${sourceItems.map((item) => item.label).join(", ")}.`
+      : `Prepared ${sources.length} source${sources.length === 1 ? "" : "s"} for refinement.`,
+    [NODES.CHUNK]: `Split the material into ${counts.chunks} traceable chunk${counts.chunks === 1 ? "" : "s"} so every claim can point back to a source.`,
+    [NODES.OBSERVE]: firstEntity
+      ? `A ${firstEntity.kind} came up: ${firstEntity.label}. ${firstEntity.detail}`
+      : firstObservation
+        ? `Found an early signal: ${firstObservation.label}. ${firstObservation.detail}`
+        : "Read the sources but did not find strong artifacts yet.",
+    [NODES.CONNECT]: firstConnection
+      ? `Connected the dots: ${firstConnection.label}. ${firstConnection.detail}`
+      : "Checked for relationships, but no strong source-backed links were ready yet.",
+    [NODES.UNDERSTAND]: firstObservation
+      ? `Built a clearer picture around ${firstObservation.label}.`
+      : "Organized the extracted evidence into a more coherent model.",
+    [NODES.REFLECT]: questionItems[0]
+      ? `Flagged a verification gap: ${questionItems[0].label}.`
+      : "Checked the model for weak links and missing evidence.",
+    [NODES.BUILD_MODEL]: `Saved a model with ${counts.artifacts} artifact${counts.artifacts === 1 ? "" : "s"} and ${counts.connections} connection${counts.connections === 1 ? "" : "s"}.`,
+    [NODES.GENERATE_VIEWS]: "Prepared the explorable project view from the refined model.",
+  };
+
+  return {
+    message: messages[stage] || `${stage} completed`,
+    payload: {
+      counts,
+      graph,
+      items: graph.connections.length ? graph.connections : graph.entities.length ? graph.entities : graph.observations.length ? graph.observations : graph.sources,
+      focus: {
+        title: stage === NODES.BUILD_MODEL || stage === NODES.GENERATE_VIEWS ? "Model taking shape" : "Working evidence",
+        status: messages[stage] || `${stage} completed`,
+        evidence: `${counts.artifacts} artifacts, ${counts.connections} links`,
+      },
+    },
+  };
+};
+
 const truncateText = (value, maxLength = 700) => {
   const text = typeof value === "string" ? value : JSON.stringify(value || {});
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
@@ -626,7 +787,7 @@ const processProject = async (projectId, options = {}) => {
   // Load sources
   try {
     const [sourceRows] = await pool.query(
-      `SELECT id, source_type, source_category, inclusion_state, extracted_text, raw_text, metadata
+      `SELECT id, source_type, source_category, inclusion_state, original_name, title, uri, extracted_text, raw_text, metadata
        FROM sources
        WHERE project_id = ?
          AND status IN ('normalized', 'pending', 'chunked')
@@ -636,6 +797,11 @@ const processProject = async (projectId, options = {}) => {
 
     status.context.sources = sourceRows.map((r) => ({
       id: r.id,
+      originalName: r.original_name,
+      title: r.title,
+      uri: r.uri,
+      sourceType: r.source_type,
+      sourceCategory: r.source_category,
       text: r.extracted_text || r.raw_text || "",
       metadata: {
         ...(typeof r.metadata === "string" ? JSON.parse(r.metadata) : (r.metadata || {})),
@@ -685,7 +851,7 @@ const processProject = async (projectId, options = {}) => {
           stagesFailed: status.failedNodes,
           errorMessage: status.errors.join("; ")
         });
-        await emitRunEvent(status.context, "stage_failed", nodeId, result.error || `${nodeId} failed`);
+        await emitRunEvent(status.context, "stage_failed", nodeId, humanizeStageError(result.error || `${nodeId} failed`));
         if (CRITICAL_NODES.has(nodeId)) {
           break;
         }
@@ -711,7 +877,8 @@ const processProject = async (projectId, options = {}) => {
         modelsUsed: status.modelsUsed,
         totalCost: status.totalCost
       });
-      await emitRunEvent(status.context, "stage_completed", nodeId, `${nodeId} completed`, result.output || null);
+      const event = stageSnapshot(status.context, nodeId, result);
+      await emitRunEvent(status.context, "stage_completed", nodeId, event.message, event.payload);
     } catch (err) {
       status.errors.push(`${nodeId}: ${err.message}`);
       status.failedNodes.push(nodeId);
@@ -720,7 +887,7 @@ const processProject = async (projectId, options = {}) => {
         stagesFailed: status.failedNodes,
         errorMessage: status.errors.join("; ")
       });
-      await emitRunEvent(status.context, "stage_failed", nodeId, err.message);
+      await emitRunEvent(status.context, "stage_failed", nodeId, humanizeStageError(err.message));
       if (CRITICAL_NODES.has(nodeId)) {
         break;
       }
@@ -739,7 +906,16 @@ const processProject = async (projectId, options = {}) => {
       if (!status.completedNodes.includes(NODES.GENERATE_VIEWS)) {
         status.completedNodes.push(NODES.GENERATE_VIEWS);
       }
-      await emitRunEvent(status.context, "stage_completed", NODES.GENERATE_VIEWS, "Fallback view generated", fallbackView);
+      await emitRunEvent(
+        status.context,
+        "stage_completed",
+        NODES.GENERATE_VIEWS,
+        "Prepared the explorable project view from the refined model.",
+        {
+          ...stageSnapshot(status.context, NODES.GENERATE_VIEWS, { output: fallbackView }).payload,
+          fallback: true,
+        }
+      );
     } catch (err) {
       status.errors.push(`${NODES.GENERATE_VIEWS}: ${err.message}`);
       if (!status.failedNodes.includes(NODES.GENERATE_VIEWS)) {

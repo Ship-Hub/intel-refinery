@@ -24,6 +24,16 @@ function buildSatellites(node, rng) {
   }));
 }
 
+const fitText = (ctx, text, maxWidth) => {
+  const value = String(text || "");
+  if (ctx.measureText(value).width <= maxWidth) return value;
+  let next = value;
+  while (next.length > 8 && ctx.measureText(`${next}...`).width > maxWidth) {
+    next = next.slice(0, -1);
+  }
+  return `${next.trim()}...`;
+};
+
 export default function KnowledgeCanvas({
   nodes = [],
   links = [],
@@ -41,7 +51,7 @@ export default function KnowledgeCanvas({
 
   const derivedRef = useRef({ key: "", amb: [], sats: {}, timings: {} });
   useEffect(() => {
-    const key = nodes.map((n) => n.id).join("|");
+    const key = nodes.map((n) => `${n.id}:${(n.items || []).map((item) => item.label).join(",")}`).join("|");
     if (derivedRef.current.key === key) return;
     const rng = makeRng(91);
     const sats = {};
@@ -227,6 +237,22 @@ export default function KnowledgeCanvas({
           const lh = fs + 2.5;
           const y0 = y - ((lines.length - 1) * lh) / 2;
           lines.forEach((ln, k) => ctx.fillText(ln, x, y0 + k * lh));
+          if (n.items?.length) {
+            const itemY = y + r + 13;
+            const maxWidth = Math.max(128, r * 4.2);
+            ctx.textBaseline = "top";
+            ctx.font = `500 10px 'DM Sans', system-ui, sans-serif`;
+            n.items.slice(0, 3).forEach((item, k) => {
+              const yy = itemY + k * 14;
+              const label = fitText(ctx, item.label, maxWidth - 18);
+              ctx.fillStyle = "rgba(216,232,248,0.88)";
+              ctx.fillText(label, x, yy);
+              ctx.fillStyle = `rgba(${n.color},${0.9 * op})`;
+              ctx.beginPath();
+              ctx.arc(x - (ctx.measureText(label).width / 2) - 8, yy + 5, 2, 0, Math.PI * 2);
+              ctx.fill();
+            });
+          }
           ctx.restore();
         }
       });
