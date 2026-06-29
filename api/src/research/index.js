@@ -178,6 +178,7 @@ function normalizeParsedOutput(protocol, parsed, input = {}) {
       ...item,
       artifactIndex: item.artifactIndex ?? item.artifact_index ?? index,
       confidence: coerceScore(item.confidence, 1),
+      quote: item.quote == null ? undefined : item.quote,
       sourceId:
         item.sourceId ||
         item.source_id ||
@@ -211,7 +212,6 @@ function normalizeParsedOutput(protocol, parsed, input = {}) {
       artifactIndex: index,
       sourceId,
       chunkId,
-      quote: null,
       evidenceType: "supports",
       confidence: artifact.confidence ?? 1
     });
