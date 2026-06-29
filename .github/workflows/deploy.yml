@@ -162,8 +162,10 @@ jobs:
             ensure_env_default OPENROUTER_REFLECT_MODEL anthropic/claude-sonnet
             ensure_env_default OPENROUTER_VIEW_MODEL deepseek/deepseek-v4-flash
             ensure_env_default OPENROUTER_QUALITY_MODEL deepseek/deepseek-v4-flash
-            ensure_env_default AI_PROVIDER openrouter
-            ensure_env_default AI_FALLBACK_PROVIDER groq
+            ensure_env_default OPENROUTER_FALLBACK_MODEL deepseek/deepseek-v4-flash
+            upsert_env AI_PROVIDER openrouter
+            upsert_env AI_FALLBACK_PROVIDER gemini
+            upsert_env AI_ENABLE_GROQ_FALLBACK false
             cp "$RELEASE_DIR/api/.env" "$SHARED_DIR/api.env"
             chmod 600 "$SHARED_DIR/api.env"
 

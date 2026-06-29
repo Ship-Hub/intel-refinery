@@ -12,6 +12,32 @@ const getEnv = (key, fallback) => process.env[key] || fallback;
 const getOpenRouterModel = (key, fallback) =>
   normalizeOpenRouterModel(getEnv(key, fallback));
 
+const openRouterFallbackModel = () =>
+  getOpenRouterModel("OPENROUTER_FALLBACK_MODEL", "deepseek/deepseek-v4-flash");
+
+const geminiFallbackModel = () =>
+  getEnv("GEMINI_FALLBACK_MODEL", getEnv("GEMINI_MODEL", "gemini-2.5-flash"));
+
+const groqFallbackEnabled = () =>
+  String(getEnv("AI_ENABLE_GROQ_FALLBACK", "false")).toLowerCase() === "true";
+
+const fallbackChain = (taskModel, options = {}) => {
+  const chain = [];
+  const add = (provider, model) => {
+    if (!provider || !model) return;
+    if (chain.some((item) => item.provider === provider && item.model === model)) return;
+    chain.push({ provider, model });
+  };
+
+  add("openrouter", options.openrouterModel || openRouterFallbackModel());
+  add("gemini", options.geminiModel || geminiFallbackModel());
+  if (groqFallbackEnabled()) {
+    add("groq", getEnv("GROQ_MODEL", "llama-3.3-70b-versatile"));
+  }
+
+  return chain.filter((item) => !(item.provider === "openrouter" && item.model === taskModel));
+};
+
 const taskRouting = {
   observe: {
     provider: "openrouter",
@@ -21,10 +47,7 @@ const taskRouting = {
     jsonMode: true,
     retries: 1,
     capabilities: ["fast_extraction", "structured_json", "citation"],
-    fallback: {
-      provider: "groq",
-      model: getEnv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    }
+    fallbackChain: fallbackChain(getOpenRouterModel("OPENROUTER_OBSERVE_MODEL", "deepseek/deepseek-v4-flash"))
   },
 
   connect: {
@@ -35,10 +58,7 @@ const taskRouting = {
     jsonMode: true,
     retries: 1,
     capabilities: ["relationship_detection", "structured_json", "pattern_recognition"],
-    fallback: {
-      provider: "groq",
-      model: getEnv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    }
+    fallbackChain: fallbackChain(getOpenRouterModel("OPENROUTER_CONNECT_MODEL", "deepseek/deepseek-v4-pro"))
   },
 
   understand: {
@@ -49,10 +69,7 @@ const taskRouting = {
     jsonMode: true,
     retries: 1,
     capabilities: ["deep_reasoning", "structured_json", "long_context", "synthesis"],
-    fallback: {
-      provider: "groq",
-      model: getEnv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    }
+    fallbackChain: fallbackChain(getOpenRouterModel("OPENROUTER_UNDERSTAND_MODEL", "deepseek/deepseek-v4-pro"))
   },
 
   reflect: {
@@ -63,10 +80,7 @@ const taskRouting = {
     jsonMode: true,
     retries: 1,
     capabilities: ["deep_reasoning", "critical_analysis", "structured_json", "long_context"],
-    fallback: {
-      provider: "groq",
-      model: getEnv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    }
+    fallbackChain: fallbackChain(getOpenRouterModel("OPENROUTER_REFLECT_MODEL", "deepseek/deepseek-v4-pro"))
   },
 
   generate_view: {
@@ -77,10 +91,7 @@ const taskRouting = {
     jsonMode: false,
     retries: 1,
     capabilities: ["long_context", "structured_json", "narrative_generation"],
-    fallback: {
-      provider: "groq",
-      model: getEnv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    }
+    fallbackChain: fallbackChain(getOpenRouterModel("OPENROUTER_VIEW_MODEL", "deepseek/deepseek-v4-flash"))
   },
 
   quality_review: {
@@ -91,10 +102,7 @@ const taskRouting = {
     jsonMode: true,
     retries: 1,
     capabilities: ["structured_json", "critical_analysis"],
-    fallback: {
-      provider: "groq",
-      model: getEnv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    }
+    fallbackChain: fallbackChain(getOpenRouterModel("OPENROUTER_QUALITY_MODEL", "deepseek/deepseek-v4-flash"))
   }
 };
 

@@ -2,6 +2,7 @@
 // All AI operations flow through this module
 
 const { getProviderConfig, getTaskConfig } = require("./config");
+const env = require("../config/env");
 const openRouter = require("./openRouterProvider");
 const geminiProvider = require("../ai/providers/gemini");
 const groqProvider = require("../ai/providers/groq");
@@ -63,15 +64,58 @@ const isRetryable = (result) =>
     result.error || ""
   );
 
+const isContextLimitError = (result) =>
+  !result.success &&
+  /\b(400|413)\b|request too large|tokens per minute|context length|maximum context|too many tokens|prompt is too long/i.test(
+    result.error || ""
+  );
+
+const providerAvailable = (providerName) => {
+  if (providerName === "openrouter") return Boolean(env.OPENROUTER_API_KEY);
+  if (providerName === "gemini") return Boolean(env.GEMINI_API_KEY);
+  if (providerName === "groq") return Boolean(env.GROQ_API_KEY);
+  if (providerName === "ollama") return true;
+  return false;
+};
+
+const buildAttemptChain = (taskConfig) => {
+  const chain = [
+    {
+      provider: taskConfig.provider,
+      model: taskConfig.model,
+    },
+    ...(taskConfig.fallbackChain || (taskConfig.fallback ? [taskConfig.fallback] : [])),
+  ];
+
+  const seen = new Set();
+  return chain.filter((attempt) => {
+    if (!attempt?.provider || !attempt?.model) return false;
+    const key = `${attempt.provider}:${attempt.model}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return providerAvailable(attempt.provider);
+  });
+};
+
 const executeTask = async (taskType, input, dbContext = null) => {
   const taskConfig = getTaskConfig(taskType);
 
   let lastResult = { success: false, error: "No attempts made" };
-  const maxAttempts = taskConfig.retries + 1;
+  const attempts = buildAttemptChain(taskConfig);
+  const maxAttempts = attempts.length;
+
+  if (maxAttempts === 0) {
+    return {
+      success: false,
+      provider: taskConfig.provider,
+      model: taskConfig.model,
+      error: `No configured AI provider is available for ${taskType}. Set OPENROUTER_API_KEY or GEMINI_API_KEY.`
+    };
+  }
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const providerName = attempt === 0 ? taskConfig.provider : taskConfig.fallback.provider;
-    const model = attempt === 0 ? taskConfig.model : taskConfig.fallback.model;
+    const providerName = attempts[attempt].provider;
+    const model = attempts[attempt].model;
 
     logAiProviderAttempt({
       taskType,
@@ -101,7 +145,11 @@ const executeTask = async (taskType, input, dbContext = null) => {
       return lastResult;
     }
 
-    if (attempt > 0 && !isRetryable(lastResult)) {
+    if (providerName === "groq" && isContextLimitError(lastResult)) {
+      break;
+    }
+
+    if (attempt > 0 && !isRetryable(lastResult) && !isContextLimitError(lastResult)) {
       break;
     }
   }
@@ -112,4 +160,4 @@ const executeTask = async (taskType, input, dbContext = null) => {
 const execute = async (taskType, input, dbContext = null) =>
   executeTask(taskType, input, dbContext);
 
-module.exports = { execute, executeTask };
+module.exports = { execute, executeTask, buildAttemptChain, isContextLimitError };

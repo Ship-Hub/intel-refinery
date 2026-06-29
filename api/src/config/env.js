@@ -128,6 +128,12 @@ const env =
             "deepseek/deepseek-v4-flash"
         }),
 
+      OPENROUTER_FALLBACK_MODEL:
+        str({
+          default:
+            "deepseek/deepseek-v4-flash"
+        }),
+
       GEMINI_API_KEY:
         str({
           default:
@@ -177,7 +183,20 @@ const env =
         str({
 
           default:
-            "groq"
+            "gemini"
+
+        }),
+
+      AI_ENABLE_GROQ_FALLBACK:
+        str({
+
+          choices: [
+            "true",
+            "false"
+          ],
+
+          default:
+            "false"
 
         }),
 

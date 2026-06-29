@@ -22,6 +22,7 @@ const appConfig = {
   ai: {
     primaryProvider: env.AI_PROVIDER,
     fallbackProvider: env.AI_FALLBACK_PROVIDER || null,
+    enableGroqFallback: env.AI_ENABLE_GROQ_FALLBACK === "true",
     maxProviderAttempts: Math.min(Math.max(1, env.AI_MAX_PROVIDER_ATTEMPTS), 3),
     providerTimeoutMs: env.AI_PROVIDER_TIMEOUT_MS,
     model: env.GEMINI_MODEL,
