@@ -12,6 +12,8 @@ const STAGE_TO_TASK = {
   validation: "quality_review"
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 let initialized = false;
 
 function ensureInit() {
@@ -177,6 +179,9 @@ function normalizeArtifact(artifact, fallbackTitle = "Extracted artifact") {
 
   normalized.confidence = coerceScore(normalized.confidence, 1);
   normalized.importance = coerceScore(normalized.importance, 0.5);
+  if (!normalized.firstSeenSourceId || !UUID_RE.test(String(normalized.firstSeenSourceId))) {
+    normalized.firstSeenSourceId = undefined;
+  }
 
   return normalized;
 }
@@ -216,7 +221,7 @@ function normalizeConnection(connection, input = {}) {
   const fromTitle = connection.fromArtifactTitle || connection.sourceArtifactTitle || connection.sourceTitle || connection.from;
   const toTitle = connection.toArtifactTitle || connection.targetArtifactTitle || connection.targetTitle || connection.to;
 
-  return {
+  const normalized = {
     ...connection,
     connectionType:
       connection.connectionType ||
@@ -247,9 +252,13 @@ function normalizeConnection(connection, input = {}) {
     confidence: coerceScore(connection.confidence, 0.7),
     strength: coerceScore(connection.strength, 0.5)
   };
+
+  if (!normalized.fromArtifactId) normalized.fromArtifactId = undefined;
+  if (!normalized.toArtifactId) normalized.toArtifactId = undefined;
+  return normalized;
 }
 
-function normalizeConnections(parsed, input = {}) {
+function normalizeConnections(parsed, input = {}, options = {}) {
   for (const key of ["connections", "connectionEvidence"]) {
     if (!Array.isArray(parsed[key])) continue;
     parsed[key] = parsed[key].filter((item) => item && typeof item === "object");
@@ -257,6 +266,38 @@ function normalizeConnections(parsed, input = {}) {
 
   if (Array.isArray(parsed.connections)) {
     parsed.connections = parsed.connections.map((connection) => normalizeConnection(connection, input));
+    if (options.dropInvalid !== false) {
+      parsed.connections = parsed.connections.filter((connection) =>
+        (connection.fromArtifactId || connection.fromArtifactIndex !== undefined) &&
+        (connection.toArtifactId || connection.toArtifactIndex !== undefined) &&
+        connection.connectionType
+      );
+    }
+  }
+}
+
+function normalizeUnderstanding(parsed, input = {}) {
+  normalizeConnections(parsed, input);
+
+  if (Array.isArray(parsed.mergeSuggestions)) {
+    parsed.mergeSuggestions = parsed.mergeSuggestions
+      .map((suggestion) => ({
+        ...suggestion,
+        keepArtifactId: suggestion.keepArtifactId || suggestion.keep_artifact_id,
+        discardArtifactId: suggestion.discardArtifactId || suggestion.discard_artifact_id,
+        reason: suggestion.reason || suggestion.explanation
+      }))
+      .filter((suggestion) => suggestion.keepArtifactId && suggestion.discardArtifactId && suggestion.reason);
+  }
+
+  if (Array.isArray(parsed.refinements)) {
+    parsed.refinements = parsed.refinements
+      .map((refinement) => ({
+        ...refinement,
+        artifactId: refinement.artifactId || refinement.artifact_id || refinement.targetArtifactId,
+        updates: refinement.updates || refinement.update || {}
+      }))
+      .filter((refinement) => refinement.artifactId && Object.keys(refinement.updates || {}).length > 0);
   }
 }
 
@@ -326,8 +367,11 @@ function normalizePresentation(parsed) {
 function normalizeParsedOutput(protocol, parsed, input = {}) {
   if (!parsed || typeof parsed !== "object") return parsed;
   normalizeArtifactArrays(parsed);
-  if (protocol.stage === "connection" || protocol.stage === "understanding") {
+  if (protocol.stage === "connection") {
     normalizeConnections(parsed, input);
+  }
+  if (protocol.stage === "understanding") {
+    normalizeUnderstanding(parsed, input);
   }
   if (protocol.stage === "reflection") {
     normalizeReflection(parsed, input);

@@ -45,8 +45,12 @@ jobs:
             printf '%s' "$PDF_B64" | base64 -d > "$WORK_DIR/input.pdf"
 
             echo "::group::live api logs"
-            (pm2 logs intel-refinery-api --lines 0 --nostream 2>/dev/null || true)
-            (pm2 logs intel-refinery-api --lines 200 2>&1 | sed -u 's/^/[api] /') &
+            LOG_FILES=$(ls "$HOME"/.pm2/logs/intel-refinery-api-*.log 2>/dev/null || true)
+            if [ -n "$LOG_FILES" ]; then
+              tail -n 200 -F $LOG_FILES 2>&1 | sed -u 's/^/[api] /' &
+            else
+              tail -n 0 -f /dev/null &
+            fi
             LOG_PID=$!
             trap 'kill "$LOG_PID" 2>/dev/null || true' EXIT
             echo "::endgroup::"
