@@ -33,6 +33,7 @@ jobs:
           username: ${{ secrets.CONTABO_USER }}
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: ${{ secrets.CONTABO_SSH_PORT }}
+          command_timeout: 30m
           envs: PDF_B64,URL_ONE,URL_TWO,URL_THREE
           script: |
             set -euo pipefail
