@@ -144,6 +144,40 @@ const buildFallbackView = (modelData = {}) => {
   };
 };
 
+const truncateText = (value, maxLength = 700) => {
+  const text = typeof value === "string" ? value : JSON.stringify(value || {});
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+};
+
+const compactArtifactForAi = (artifact) => ({
+  id: artifact.id,
+  title: artifact.title,
+  artifactType: artifact.artifact_type || artifact.artifactType,
+  summary: truncateText(artifact.summary || artifact.description || "", 500),
+  content: truncateText(parseJson(artifact.content, artifact.content || {}), 650),
+  confidence: artifact.confidence,
+  importance: artifact.importance,
+  status: artifact.status,
+  firstSeenSourceId: artifact.first_seen_source_id || artifact.firstSeenSourceId,
+});
+
+const compactConnectionForAi = (connection) => ({
+  id: connection.id,
+  fromArtifactId: connection.from_artifact_id || connection.fromArtifactId,
+  toArtifactId: connection.to_artifact_id || connection.toArtifactId,
+  connectionType: connection.connection_type || connection.connectionType,
+  label: connection.label,
+  explanation: truncateText(connection.explanation || "", 400),
+  confidence: connection.confidence,
+  strength: connection.strength,
+});
+
+const compactArtifactsForAi = (artifacts = []) =>
+  artifacts.slice(0, 60).map(compactArtifactForAi);
+
+const compactConnectionsForAi = (connections = []) =>
+  connections.slice(0, 120).map(compactConnectionForAi);
+
 const normalizeConnections = (connections, artifactIds = []) =>
   (connections || [])
     .map((connection) => ({
@@ -311,7 +345,7 @@ const buildTaskInput = (taskType, context) => {
     case "connect":
       return {
         projectId,
-        artifacts: context.artifacts || [],
+        artifacts: compactArtifactsForAi(context.artifacts || []),
         profileKey: context.profileKey,
         intent: context.intent
       };
@@ -319,8 +353,8 @@ const buildTaskInput = (taskType, context) => {
     case "understand":
       return {
         projectId,
-        artifacts: context.artifacts || [],
-        connections: context.connections || [],
+        artifacts: compactArtifactsForAi(context.artifacts || []),
+        connections: compactConnectionsForAi(context.connections || []),
         profileKey: context.profileKey,
         intent: context.intent
       };
@@ -328,8 +362,8 @@ const buildTaskInput = (taskType, context) => {
     case "reflect":
       return {
         projectId,
-        artifacts: context.artifacts || [],
-        connections: context.connections || [],
+        artifacts: compactArtifactsForAi(context.artifacts || []),
+        connections: compactConnectionsForAi(context.connections || []),
         modelVersionId: context.refineryModelVersionId,
         profileKey: context.profileKey,
         intent: context.intent
@@ -339,8 +373,8 @@ const buildTaskInput = (taskType, context) => {
       return {
         projectId,
         modelVersionId: context.refineryModelVersionId,
-        artifacts: context.artifacts || [],
-        connections: context.connections || [],
+        artifacts: compactArtifactsForAi(context.artifacts || []),
+        connections: compactConnectionsForAi(context.connections || []),
         modelVersion: context.refineryModel,
         profileKey: context.profileKey,
         intent: context.intent

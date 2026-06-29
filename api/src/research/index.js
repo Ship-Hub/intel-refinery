@@ -195,9 +195,146 @@ function normalizeArtifactArrays(parsed) {
   }
 }
 
+function toOptionalIndex(value) {
+  if (Number.isInteger(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function normalizeConnection(connection, input = {}) {
+  const artifacts = input.artifacts || [];
+  const artifactIdByTitle = new Map(
+    artifacts
+      .filter((artifact) => artifact?.id && artifact?.title)
+      .map((artifact) => [String(artifact.title).toLowerCase(), artifact.id])
+  );
+  const fromIndex = toOptionalIndex(connection.fromArtifactIndex ?? connection.from_index ?? connection.sourceArtifactIndex ?? connection.sourceIndex);
+  const toIndex = toOptionalIndex(connection.toArtifactIndex ?? connection.to_index ?? connection.targetArtifactIndex ?? connection.targetIndex);
+  const fromTitle = connection.fromArtifactTitle || connection.sourceArtifactTitle || connection.sourceTitle || connection.from;
+  const toTitle = connection.toArtifactTitle || connection.targetArtifactTitle || connection.targetTitle || connection.to;
+
+  return {
+    ...connection,
+    connectionType:
+      connection.connectionType ||
+      connection.connection_type ||
+      connection.type ||
+      connection.relationship ||
+      connection.relation ||
+      connection.label ||
+      "related_to",
+    fromArtifactIndex: fromIndex,
+    toArtifactIndex: toIndex,
+    fromArtifactId:
+      connection.fromArtifactId ||
+      connection.from_artifact_id ||
+      connection.sourceArtifactId ||
+      connection.source_artifact_id ||
+      connection.artifactId ||
+      (fromIndex !== undefined ? artifacts[fromIndex]?.id : null) ||
+      (fromTitle ? artifactIdByTitle.get(String(fromTitle).toLowerCase()) : null),
+    toArtifactId:
+      connection.toArtifactId ||
+      connection.to_artifact_id ||
+      connection.targetArtifactId ||
+      connection.target_artifact_id ||
+      connection.relatedArtifactId ||
+      (toIndex !== undefined ? artifacts[toIndex]?.id : null) ||
+      (toTitle ? artifactIdByTitle.get(String(toTitle).toLowerCase()) : null),
+    confidence: coerceScore(connection.confidence, 0.7),
+    strength: coerceScore(connection.strength, 0.5)
+  };
+}
+
+function normalizeConnections(parsed, input = {}) {
+  for (const key of ["connections", "connectionEvidence"]) {
+    if (!Array.isArray(parsed[key])) continue;
+    parsed[key] = parsed[key].filter((item) => item && typeof item === "object");
+  }
+
+  if (Array.isArray(parsed.connections)) {
+    parsed.connections = parsed.connections.map((connection) => normalizeConnection(connection, input));
+  }
+}
+
+function normalizeReflection(parsed, input = {}) {
+  const allowedTypes = new Set(["knowledge_gap", "question", "risk", "assumption", "alternative_explanation", "limitation"]);
+
+  if (Array.isArray(parsed.newArtifacts)) {
+    parsed.newArtifacts = parsed.newArtifacts.map((artifact) => {
+      if (!allowedTypes.has(artifact.artifactType)) {
+        artifact.artifactType = artifact.type && allowedTypes.has(artifact.type) ? artifact.type : "question";
+      }
+      return artifact;
+    });
+  }
+
+  if (Array.isArray(parsed.statusChanges)) {
+    parsed.statusChanges = parsed.statusChanges
+      .map((change) => ({
+        ...change,
+        artifactId: change.artifactId || change.artifact_id || change.targetArtifactId,
+        status: change.status || change.recommendedStatus || change.recommended_status,
+        reason: change.reason || change.explanation || "Suggested by reflection"
+      }))
+      .filter((change) => change.artifactId && change.status);
+  }
+
+  normalizeConnections(parsed, input);
+  if (Array.isArray(parsed.connections)) {
+    parsed.connections = parsed.connections.filter((connection) => connection.toArtifactId);
+  }
+}
+
+function normalizeViewSection(section, index) {
+  if (typeof section === "string") {
+    return { title: `Section ${index + 1}`, body: section };
+  }
+
+  const normalized = typeof section === "object" && section !== null ? { ...section } : {};
+  normalized.title = normalized.title || normalized.heading || normalized.name || `Section ${index + 1}`;
+  if (!normalized.body && typeof normalized.content === "string") {
+    normalized.body = normalized.content;
+  }
+  if (!normalized.body && Array.isArray(normalized.items)) {
+    normalized.body = normalized.items.map((item) => typeof item === "string" ? item : JSON.stringify(item)).join("\n");
+  }
+  return normalized;
+}
+
+function normalizePresentation(parsed) {
+  if (Array.isArray(parsed.structure)) {
+    parsed.structure = { sections: parsed.structure.map(normalizeViewSection) };
+  }
+
+  if (Array.isArray(parsed.content)) {
+    parsed.content = { sections: parsed.content.map(normalizeViewSection), metadata: {} };
+  }
+
+  if (parsed.structure && Array.isArray(parsed.structure.sections)) {
+    parsed.structure.sections = parsed.structure.sections.map(normalizeViewSection);
+  }
+
+  if (parsed.content && Array.isArray(parsed.content.sections)) {
+    parsed.content.sections = parsed.content.sections.map(normalizeViewSection);
+  }
+}
+
 function normalizeParsedOutput(protocol, parsed, input = {}) {
   if (!parsed || typeof parsed !== "object") return parsed;
   normalizeArtifactArrays(parsed);
+  if (protocol.stage === "connection" || protocol.stage === "understanding") {
+    normalizeConnections(parsed, input);
+  }
+  if (protocol.stage === "reflection") {
+    normalizeReflection(parsed, input);
+  }
+  if (protocol.stage === "presentation") {
+    normalizePresentation(parsed);
+  }
   if (protocol.stage !== "observation") return parsed;
 
   const chunks = input.sourceChunks || [];
