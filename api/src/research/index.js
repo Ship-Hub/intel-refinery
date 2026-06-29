@@ -188,6 +188,35 @@ function normalizeParsedOutput(protocol, parsed, input = {}) {
     };
   });
 
+  const coveredArtifactIndexes = new Set(
+    parsed.evidence
+      .map((item) => item.artifactIndex)
+      .filter((index) => Number.isInteger(index))
+  );
+
+  parsed.artifacts.forEach((artifact, index) => {
+    if (coveredArtifactIndexes.has(index)) return;
+
+    const chunkId = fallbackChunk?.id || null;
+    const sourceId =
+      artifact.firstSeenSourceId ||
+      artifact.sourceId ||
+      artifact.source_id ||
+      (chunkId ? sourceByChunk.get(chunkId) : null) ||
+      fallbackChunk?.sourceId;
+
+    if (!sourceId) return;
+
+    parsed.evidence.push({
+      artifactIndex: index,
+      sourceId,
+      chunkId,
+      quote: null,
+      evidenceType: "supports",
+      confidence: artifact.confidence ?? 1
+    });
+  });
+
   return parsed;
 }
 
