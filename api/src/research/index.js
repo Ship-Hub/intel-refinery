@@ -152,8 +152,52 @@ function coerceScore(value, fallback) {
   return fallback;
 }
 
+function normalizeArtifact(artifact, fallbackTitle = "Extracted artifact") {
+  const normalized = typeof artifact === "object" && artifact !== null
+    ? { ...artifact }
+    : {
+        title: fallbackTitle,
+        summary: String(artifact || ""),
+        content: { text: String(artifact || "") }
+      };
+
+  if (!normalized.title || typeof normalized.title !== "string") {
+    normalized.title = normalized.summary || fallbackTitle;
+  }
+
+  if (typeof normalized.content === "string") {
+    normalized.content = { text: normalized.content };
+  } else if (Array.isArray(normalized.content)) {
+    normalized.content = { items: normalized.content };
+  } else if (normalized.content == null) {
+    normalized.content = undefined;
+  } else if (typeof normalized.content !== "object") {
+    normalized.content = { value: normalized.content };
+  }
+
+  normalized.confidence = coerceScore(normalized.confidence, 1);
+  normalized.importance = coerceScore(normalized.importance, 0.5);
+
+  return normalized;
+}
+
+function normalizeArtifactArrays(parsed) {
+  if (Array.isArray(parsed.artifacts)) {
+    parsed.artifacts = parsed.artifacts.map((artifact, index) =>
+      normalizeArtifact(artifact, `Extracted artifact ${index + 1}`)
+    );
+  }
+
+  if (Array.isArray(parsed.newArtifacts)) {
+    parsed.newArtifacts = parsed.newArtifacts.map((artifact, index) =>
+      normalizeArtifact(artifact, `Discovered artifact ${index + 1}`)
+    );
+  }
+}
+
 function normalizeParsedOutput(protocol, parsed, input = {}) {
   if (!parsed || typeof parsed !== "object") return parsed;
+  normalizeArtifactArrays(parsed);
   if (protocol.stage !== "observation") return parsed;
 
   const chunks = input.sourceChunks || [];
