@@ -20,6 +20,13 @@ const parseJson = (value, fallback = null) => {
 const toMysqlDateTime = (date = new Date()) =>
   date.toISOString().slice(0, 19).replace("T", " ");
 
+const CRITICAL_NODES = new Set([
+  NODES.NORMALIZE,
+  NODES.CHUNK,
+  NODES.OBSERVE,
+  NODES.BUILD_MODEL
+]);
+
 const emitRunEvent = async (context, eventType, stage, message, payload = null) => {
   if (!context.runId || !context.projectId) return;
   await appendRunEvent({
@@ -93,6 +100,49 @@ const inferredEvidenceForArtifacts = (artifacts, artifactIds = []) =>
       confidence: artifact.confidence ?? 1,
     }));
   });
+
+const buildFallbackView = (modelData = {}) => {
+  const artifactRows = Array.isArray(modelData.artifacts) ? modelData.artifacts : [];
+  const connectionRows = Array.isArray(modelData.connections) ? modelData.connections : [];
+  const sourceRows = Array.isArray(modelData.sources) ? modelData.sources : [];
+  const topArtifacts = artifactRows.slice(0, 12).map((artifact) => ({
+    title: artifact.title || "Untitled artifact",
+    body: artifact.summary || artifact.artifact_type || "Extracted from source material."
+  }));
+
+  const sections = [
+    {
+      title: "Model Summary",
+      body: modelData.summary || `Refinery Model with ${artifactRows.length} artifacts and ${connectionRows.length} connections across ${sourceRows.length} sources.`
+    },
+    {
+      title: "Top Artifacts",
+      body: topArtifacts.length
+        ? topArtifacts.map((item) => `${item.title}: ${item.body}`).join("\n")
+        : "No artifacts were extracted."
+    },
+    {
+      title: "Source Coverage",
+      body: `${sourceRows.length} sources and ${modelData.chunkCount || 0} chunks were included in this refinement.`
+    }
+  ];
+
+  return {
+    viewType: "report",
+    title: "Refinery Overview",
+    structure: { sections: sections.map((section) => ({ title: section.title })) },
+    content: {
+      sections,
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        artifactCount: artifactRows.length,
+        connectionCount: connectionRows.length,
+        sourceCount: sourceRows.length,
+        confidence: artifactRows.length > 0 ? 0.7 : 0.3
+      }
+    }
+  };
+};
 
 const normalizeConnections = (connections, artifactIds = []) =>
   (connections || [])
@@ -480,7 +530,7 @@ const processProject = async (projectId, options = {}) => {
           errorMessage: status.errors.join("; ")
         });
         await emitRunEvent(status.context, "stage_failed", nodeId, result.error || `${nodeId} failed`);
-        if ([NODES.CHUNK, NODES.OBSERVE].includes(nodeId)) {
+        if (CRITICAL_NODES.has(nodeId)) {
           break;
         }
         continue;
@@ -515,8 +565,29 @@ const processProject = async (projectId, options = {}) => {
         errorMessage: status.errors.join("; ")
       });
       await emitRunEvent(status.context, "stage_failed", nodeId, err.message);
-      if ([NODES.CHUNK, NODES.OBSERVE].includes(nodeId)) {
+      if (CRITICAL_NODES.has(nodeId)) {
         break;
+      }
+    }
+  }
+
+  if (status.context.refineryModelVersionId && !status.context.viewId) {
+    try {
+      const fallbackView = buildFallbackView(status.context.refineryModel);
+      const viewId = await persist.saveView(
+        projectId,
+        status.context.refineryModelVersionId,
+        fallbackView
+      );
+      status.context.viewId = viewId;
+      if (!status.completedNodes.includes(NODES.GENERATE_VIEWS)) {
+        status.completedNodes.push(NODES.GENERATE_VIEWS);
+      }
+      await emitRunEvent(status.context, "stage_completed", NODES.GENERATE_VIEWS, "Fallback view generated", fallbackView);
+    } catch (err) {
+      status.errors.push(`${NODES.GENERATE_VIEWS}: ${err.message}`);
+      if (!status.failedNodes.includes(NODES.GENERATE_VIEWS)) {
+        status.failedNodes.push(NODES.GENERATE_VIEWS);
       }
     }
   }
@@ -538,25 +609,32 @@ const processProject = async (projectId, options = {}) => {
     // Non-critical
   }
 
-  const hasErrors = status.errors.filter((e) => !e.includes("SKIPPED")).length > 0;
+  const hasCriticalErrors =
+    status.failedNodes.some((nodeId) => CRITICAL_NODES.has(nodeId)) ||
+    !status.context.refineryModelVersionId;
+  const nonCriticalErrors = status.errors.filter((e) => !e.includes("SKIPPED"));
 
   await persist.updateRun(status.runId, {
-    status: hasErrors ? "failed" : "completed",
+    status: hasCriticalErrors ? "failed" : "completed",
     stagesCompleted: status.completedNodes,
     stagesFailed: status.failedNodes,
     modelsUsed: status.modelsUsed,
     totalCost: status.totalCost,
     durationMs: Date.now() - new Date(status.startedAt).getTime(),
     completedAt: toMysqlDateTime(),
-    ...(hasErrors ? { errorMessage: status.errors.join("; ") } : {})
+    ...(hasCriticalErrors ? { errorMessage: status.errors.join("; ") } : {})
   });
 
-  await persist.updateProjectStatus(projectId, hasErrors ? "failed" : "completed");
+  await persist.updateProjectStatus(projectId, hasCriticalErrors ? "failed" : "completed");
   await emitRunEvent(
     status.context,
-    hasErrors ? "run_failed" : "run_completed",
+    hasCriticalErrors ? "run_failed" : "run_completed",
     null,
-    hasErrors ? status.errors.join("; ") : "Refinement pipeline completed.",
+    hasCriticalErrors
+      ? status.errors.join("; ")
+      : nonCriticalErrors.length
+        ? `Refinement pipeline completed with non-critical warnings: ${nonCriticalErrors.join("; ")}`
+        : "Refinement pipeline completed.",
     { modelVersionId: status.context.refineryModelVersionId || null }
   );
 
