@@ -19,7 +19,7 @@ on:
 jobs:
   debug:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Run production refinement smoke with live logs
         uses: appleboy/ssh-action@v1.0.3
@@ -149,7 +149,7 @@ jobs:
               });
 
               const runId = run.runId || run.id || "latest";
-              for (let i = 0; i < 90; i += 1) {
+              for (let i = 0; i < 180; i += 1) {
                 await new Promise((resolve) => setTimeout(resolve, 5000));
                 const status = await request(`${base}/api/v1/projects/${project.id}/runs/${runId}`);
                 console.log(`run ${runId}: ${status.status} ${status.progress}% ${status.message || ""}`);
