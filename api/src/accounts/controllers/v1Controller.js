@@ -810,7 +810,7 @@ const triggerRefine = async (req, res) => {
 
     const [activeRuns] = await db.promise().query(
       `SELECT id, status, stages_completed, stages_failed, error_message, started_at, created_at
-       FROM refinery_runs
+       FROM refinery_runs rr
        WHERE project_id = ? AND status IN ('queued', 'running')
        ORDER BY created_at DESC
        LIMIT 1`,
