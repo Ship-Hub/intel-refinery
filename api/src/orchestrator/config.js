@@ -1,9 +1,21 @@
+const normalizeOpenRouterModel = (model) => {
+  const replacements = {
+    "anthropic/claude-opus": "deepseek/deepseek-v4-pro",
+    "anthropic/claude-sonnet": "deepseek/deepseek-v4-pro"
+  };
+
+  return replacements[model] || model;
+};
+
 const getEnv = (key, fallback) => process.env[key] || fallback;
+
+const getOpenRouterModel = (key, fallback) =>
+  normalizeOpenRouterModel(getEnv(key, fallback));
 
 const taskRouting = {
   observe: {
     provider: "openrouter",
-    model: getEnv("OPENROUTER_OBSERVE_MODEL", "deepseek/deepseek-v4-flash"),
+    model: getOpenRouterModel("OPENROUTER_OBSERVE_MODEL", "deepseek/deepseek-v4-flash"),
     temperature: 0.2,
     maxTokens: 8192,
     jsonMode: true,
@@ -17,7 +29,7 @@ const taskRouting = {
 
   connect: {
     provider: "openrouter",
-    model: getEnv("OPENROUTER_CONNECT_MODEL", "deepseek/deepseek-v4-pro"),
+    model: getOpenRouterModel("OPENROUTER_CONNECT_MODEL", "deepseek/deepseek-v4-pro"),
     temperature: 0.1,
     maxTokens: 16384,
     jsonMode: true,
@@ -31,7 +43,7 @@ const taskRouting = {
 
   understand: {
     provider: "openrouter",
-    model: getEnv("OPENROUTER_UNDERSTAND_MODEL", "anthropic/claude-opus"),
+    model: getOpenRouterModel("OPENROUTER_UNDERSTAND_MODEL", "deepseek/deepseek-v4-pro"),
     temperature: 0.3,
     maxTokens: 16384,
     jsonMode: true,
@@ -45,7 +57,7 @@ const taskRouting = {
 
   reflect: {
     provider: "openrouter",
-    model: getEnv("OPENROUTER_REFLECT_MODEL", "anthropic/claude-sonnet"),
+    model: getOpenRouterModel("OPENROUTER_REFLECT_MODEL", "deepseek/deepseek-v4-pro"),
     temperature: 0.4,
     maxTokens: 8192,
     jsonMode: true,
@@ -59,7 +71,7 @@ const taskRouting = {
 
   generate_view: {
     provider: "openrouter",
-    model: getEnv("OPENROUTER_VIEW_MODEL", "deepseek/deepseek-v4-flash"),
+    model: getOpenRouterModel("OPENROUTER_VIEW_MODEL", "deepseek/deepseek-v4-flash"),
     temperature: 0.4,
     maxTokens: 16384,
     jsonMode: false,
@@ -73,7 +85,7 @@ const taskRouting = {
 
   quality_review: {
     provider: "openrouter",
-    model: getEnv("OPENROUTER_QUALITY_MODEL", "deepseek/deepseek-v4-flash"),
+    model: getOpenRouterModel("OPENROUTER_QUALITY_MODEL", "deepseek/deepseek-v4-flash"),
     temperature: 0.1,
     maxTokens: 4096,
     jsonMode: true,

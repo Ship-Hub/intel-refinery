@@ -107,13 +107,13 @@ const env =
       OPENROUTER_UNDERSTAND_MODEL:
         str({
           default:
-            "anthropic/claude-opus"
+            "deepseek/deepseek-v4-pro"
         }),
 
       OPENROUTER_REFLECT_MODEL:
         str({
           default:
-            "anthropic/claude-sonnet"
+            "deepseek/deepseek-v4-pro"
         }),
 
       OPENROUTER_VIEW_MODEL:

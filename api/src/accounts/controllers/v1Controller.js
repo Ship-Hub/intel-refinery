@@ -860,7 +860,7 @@ const getRunStatus = async (req, res) => {
       `SELECT rr.id, rr.project_id, rr.\`trigger\`, rr.status, rr.stages_completed, rr.stages_failed,
               error_message, duration_ms, started_at, completed_at, created_at
               , latest.stage AS current_stage
-       FROM refinery_runs
+       FROM refinery_runs rr
        LEFT JOIN (
          SELECT e.run_id, e.stage
          FROM refinery_run_events e
