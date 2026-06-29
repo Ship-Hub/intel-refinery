@@ -116,6 +116,42 @@ function getDefaultsForProtocol(protocol) {
   return stageDefaults[protocol.stage] || {};
 }
 
+function coerceScore(value, fallback) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.min(1, value));
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    const parsed = Number.parseFloat(trimmed);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.min(1, parsed > 1 ? parsed / 100 : parsed));
+    }
+
+    const qualitativeScores = {
+      very_high: 0.95,
+      "very high": 0.95,
+      high: 0.85,
+      strong: 0.85,
+      medium: 0.6,
+      moderate: 0.6,
+      med: 0.6,
+      low: 0.35,
+      weak: 0.35,
+      very_low: 0.15,
+      "very low": 0.15,
+      unknown: fallback,
+      unclear: fallback
+    };
+
+    if (qualitativeScores[trimmed] !== undefined) {
+      return qualitativeScores[trimmed];
+    }
+  }
+
+  return fallback;
+}
+
 function normalizeParsedOutput(protocol, parsed, input = {}) {
   if (!parsed || typeof parsed !== "object") return parsed;
   if (protocol.stage !== "observation") return parsed;
@@ -126,6 +162,8 @@ function normalizeParsedOutput(protocol, parsed, input = {}) {
 
   parsed.artifacts = (parsed.artifacts || []).map((artifact) => ({
     ...artifact,
+    confidence: coerceScore(artifact.confidence, 1),
+    importance: coerceScore(artifact.importance, 0.5),
     firstSeenSourceId:
       artifact.firstSeenSourceId ||
       artifact.first_seen_source_id ||
@@ -139,6 +177,7 @@ function normalizeParsedOutput(protocol, parsed, input = {}) {
     return {
       ...item,
       artifactIndex: item.artifactIndex ?? item.artifact_index ?? index,
+      confidence: coerceScore(item.confidence, 1),
       sourceId:
         item.sourceId ||
         item.source_id ||
