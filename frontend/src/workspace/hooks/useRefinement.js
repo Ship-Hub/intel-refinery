@@ -13,14 +13,15 @@ const STAGES = [
 ];
 
 const STAGE_LABELS = {
-  normalize: "Normalizing saved sources",
-  chunk: "Splitting sources into traceable chunks",
-  observe: "Extracting facts, claims, entities, and events",
-  connect: "Finding relationships and contradictions",
-  understand: "Building structured understanding",
-  reflect: "Checking weak links and evidence gaps",
-  build_model: "Freezing model version",
-  generate_views: "Preparing project views",
+  ingest: "Reading the saved sources",
+  normalize: "Cleaning extracted source text",
+  chunk: "Splitting material into traceable evidence packets",
+  observe: "AI is making sense of the extracted text",
+  connect: "AI is checking which findings belong together",
+  understand: "AI is fine-tuning the working model",
+  reflect: "Reviewing weak links and unanswered questions",
+  build_model: "Saving the refined model version",
+  generate_views: "Preparing project views for inspection",
 };
 
 const GRAPH_NODES = [
@@ -59,10 +60,32 @@ const nowTs = () =>
 
 const sanitizeMessage = (message) => {
   const text = String(message || "").trim();
-  if (/413 Request too large|tokens per minute|console\.groq\.com/i.test(text)) {
-    return "Provider context limit hit. Retrying with a smaller evidence packet.";
-  }
   return text;
+};
+
+const isTechnicalMessage = (message) =>
+  /GoogleGenerativeAI|generateContent|429|Too Many Requests|prepayment|api\.|https?:\/\/|Request failed|API|stack|Error fetching|tokens per minute|console\.groq\.com|OPENROUTER|GEMINI|GROQ/i.test(
+    String(message || "")
+  );
+
+const calmStageMessage = (stage, payload, fallback) => {
+  const firstItem = payload?.items?.[0];
+  const itemLabel = firstItem?.label ? ` from ${firstItem.label}` : "";
+  const stageFallbacks = {
+    ingest: firstItem?.detail
+      ? `Captured readable source text${itemLabel}.`
+      : "Captured readable text from the saved sources.",
+    normalize: `Cleaning the extracted text${itemLabel} so the evidence is easier to compare.`,
+    chunk: "Splitting the material into traceable evidence packets.",
+    observe: `AI is making sense of the extracted text${itemLabel}.`,
+    connect: "AI is checking which findings belong together.",
+    understand: "AI is fine-tuning the working model around the clearest evidence.",
+    reflect: "Reviewing the model for weak links, duplicates, and unanswered questions.",
+    build_model: "Saving a refined model version with the strongest supported signals.",
+    generate_views: "Preparing the project views for inspection.",
+  };
+  if (!fallback || isTechnicalMessage(fallback)) return stageFallbacks[stage] || "Refinement is continuing.";
+  return fallback;
 };
 
 const mergeGraphPayload = (current, payloadGraph = {}) => {
@@ -91,7 +114,8 @@ export function useRefinement(projectId, runId = "latest") {
   const seen = useRef(new Set());
 
   const appendLog = useCallback((stage, tone = "normal", message = null, payload = null) => {
-    const cleanMessage = sanitizeMessage(message);
+    if (tone === "failed") return;
+    const cleanMessage = calmStageMessage(stage, payload, sanitizeMessage(message));
     const key = `${stage}:${tone}:${cleanMessage || ""}`;
     if (seen.current.has(key)) return;
     seen.current.add(key);
@@ -114,7 +138,7 @@ export function useRefinement(projectId, runId = "latest") {
         id: `${key}-${Date.now()}`,
         ts: nowTs(),
         text: cleanMessage || STAGE_LABELS[stage] || stage,
-        detail: tone === "failed" ? "Stage needs attention before trusting this output." : null,
+        detail: null,
         items: payload?.items || [],
         glowing: true,
         discovery: Boolean(payload?.items?.length) || stage === "observe" || stage === "connect" || stage === "understand",
@@ -127,10 +151,6 @@ export function useRefinement(projectId, runId = "latest") {
     setError("");
 
     for (const stage of nextRun?.stagesCompleted || []) appendLog(stage);
-    for (const stage of nextRun?.stagesFailed || []) appendLog(stage, "failed");
-    if (nextRun?.status === "failed" && nextRun.errorMessage) {
-      appendLog("failed", "failed", nextRun.errorMessage);
-    }
   }, [appendLog]);
 
   useEffect(() => {
@@ -155,9 +175,9 @@ export function useRefinement(projectId, runId = "latest") {
         if (cancelled) return;
         if (event === "status" || event === "done") applyRun(data);
         if (event === "run-event") {
+          if (data.eventType === "sources_loaded") appendLog("ingest", "normal", data.message, data.payload);
+          if (data.eventType === "stage_started" && data.stage) appendLog(data.stage, "normal", data.message, data.payload);
           if (data.eventType === "stage_completed" && data.stage) appendLog(data.stage, "normal", data.message, data.payload);
-          if (data.eventType === "stage_failed" && data.stage) appendLog(data.stage, "failed", data.message, data.payload);
-          if (data.eventType === "run_failed") appendLog("failed", "failed", data.message, data.payload);
         }
       },
     }).catch((err) => {
@@ -215,7 +235,6 @@ export function useRefinement(projectId, runId = "latest") {
         heading: "RUN",
         items: [
           { label: `Run ${run?.id || runId}` },
-          ...(run?.errorMessage ? [{ label: sanitizeMessage(run.errorMessage), tone: "muted" }] : []),
         ],
       },
     ],

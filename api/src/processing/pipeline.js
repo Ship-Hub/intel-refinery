@@ -6,6 +6,7 @@ const { cleanText } = require("../ai/utils/cleanText");
 const pool = require("../config/db").promise();
 const persist = require("../refinery/persistence");
 const { appendRunEvent } = require("../refinery/runEvents");
+const { REFINERY_PROFILE_KEYS } = require("../refinery/profiles/profileConstants");
 
 const parseJson = (value, fallback = null) => {
   if (!value) return fallback;
@@ -153,13 +154,13 @@ const clampText = (value, maxLength = 96) => {
 
 const humanizeStageError = (message = "") => {
   const text = String(message || "");
-  if (/413 Request too large|tokens per minute|console\.groq\.com/i.test(text)) {
-    return "Provider context limit hit. Retrying with a smaller evidence packet before trusting this stage.";
-  }
   if (/Table .*doesn't exist/i.test(text)) {
-    return "A storage table is missing on this environment. The run cannot be trusted until migrations are applied.";
+    return "The refinery kept the extracted source material safe while this workspace catches up.";
   }
-  return clampText(text, 220) || "This stage could not complete.";
+  if (/no sources with extracted text/i.test(text)) {
+    return "The refinery needs readable source text before it can build a model.";
+  }
+  return "The refinery preserved the source work and paused this pass for a quieter retry.";
 };
 
 const sourceLabel = (source = {}) => {
@@ -183,6 +184,81 @@ const sourceLabel = (source = {}) => {
     }
   } catch { /* ignore invalid URL */ }
   return clampText(raw, 72);
+};
+
+const sourcePreview = (source = {}, maxLength = 140) =>
+  clampText(source.text || source.extracted_text || source.raw_text || "", maxLength);
+
+const sourceTextLength = (source = {}) =>
+  String(source.text || source.extracted_text || source.raw_text || "").length;
+
+const sourceExtractionMethod = (source = {}) =>
+  clampText(
+    source.metadata?.extractionMethod ||
+      source.metadata?.parser ||
+      source.metadata?.sourceType ||
+      source.sourceType ||
+      source.source_type ||
+      "stored text",
+    48
+  );
+
+const sourceKind = (source = {}) => {
+  const type = String(source.sourceType || source.source_type || source.metadata?.sourceType || "").toLowerCase();
+  const category = String(source.sourceCategory || source.source_category || source.metadata?.sourceCategory || "").toLowerCase();
+  const method = String(source.metadata?.extractionMethod || "").toLowerCase();
+  if (type === "url" || category === "web" || /playwright|cheerio/.test(method)) return "website";
+  if (type === "image" || category === "image" || /ocr/.test(method)) return "source image";
+  if (type === "pdf" || category === "document") return "document";
+  if (type === "audio" || category === "audio") return "audio source";
+  return "source";
+};
+
+const sourceLoadItem = (source = {}) => ({
+  label: sourceLabel(source),
+  detail: `${sourceKind(source)} text captured, ${sourceTextLength(source).toLocaleString()} chars`,
+  kind: "source",
+  preview: sourcePreview(source),
+});
+
+const sourcePhrase = (source = {}) => {
+  const label = sourceLabel(source);
+  const kind = sourceKind(source);
+  if (!label) return `one ${kind}`;
+  return `${kind} ${label}`;
+};
+
+const leadSourcePhrase = (sources = []) =>
+  sources.length ? sourcePhrase(sources[0]) : "the source set";
+
+const stageStartedMessage = (context = {}, stage) => {
+  const sources = context.sources || [];
+  const lead = leadSourcePhrase(sources);
+  const isCyber = context.profileKey === REFINERY_PROFILE_KEYS.CYBER;
+  if (isCyber) {
+    const cyberMessages = {
+      [NODES.NORMALIZE]: `Cleaning extracted security evidence from ${lead} so findings stay comparable.`,
+      [NODES.CHUNK]: "Splitting cyber source material into traceable evidence packets.",
+      [NODES.OBSERVE]: `AI is reading ${lead} for findings, assets, vulnerabilities, controls, and visual signals.`,
+      [NODES.CONNECT]: "AI is linking findings to affected assets, relevant controls, threats, and recommended actions.",
+      [NODES.UNDERSTAND]: "AI is fine-tuning the cyber model around the strongest source-backed risk signals.",
+      [NODES.REFLECT]: "Checking severity, duplicates, unsupported claims, missing assets, and evidence gaps.",
+      [NODES.BUILD_MODEL]: "Packing findings, assets, controls, actions, and source lineage into a saved cyber model.",
+      [NODES.GENERATE_VIEWS]: "Preparing Cyber Refinery views for review and triage.",
+    };
+    return cyberMessages[stage] || "Cyber refinement is moving to the next step.";
+  }
+  const messages = {
+    [NODES.NORMALIZE]: `Cleaning the extracted text from ${lead} so the evidence is easier to compare.`,
+    [NODES.CHUNK]: `Splitting the source material into traceable evidence packets.`,
+    [NODES.OBSERVE]: `AI is making sense of the extracted text from ${lead}.`,
+    [NODES.CONNECT]: `AI is checking whether the strongest findings point to each other.`,
+    [NODES.UNDERSTAND]: `AI is fine-tuning the model around the clearest source-backed signals.`,
+    [NODES.REFLECT]: `Reviewing the model for thin evidence, duplicates, and unanswered questions.`,
+    [NODES.BUILD_MODEL]: `Packing the refined evidence into a saved model version.`,
+    [NODES.GENERATE_VIEWS]: `Preparing the workspace views so the findings are easy to inspect.`,
+  };
+  return messages[stage] || "Refinement is moving to the next step.";
 };
 
 const artifactType = (artifact = {}) =>
@@ -219,16 +295,59 @@ const connectionLabel = (connection = {}, artifactsById = new Map()) => {
 const connectionDetail = (connection = {}) =>
   clampText(connection.explanation || connection.connection_type || connection.connectionType || "Evidence-backed relationship", 150);
 
+const cyberBucketForArtifact = (artifact = {}) => {
+  const blob = `${artifactType(artifact)} ${artifact.title || ""} ${artifact.summary || ""} ${JSON.stringify(artifact.content || {})}`.toLowerCase();
+  if (/asset|host|server|endpoint|domain|ip address|account|identity|service|application|device/.test(blob)) return "assets";
+  if (/control|policy|guardrail|mfa|edr|siem|logging|backup|encryption|mitigation/.test(blob)) return "controls";
+  if (/action|remediation|recommendation|next step|patch|rotate|isolate|review|investigate|owner/.test(blob)) return "actions";
+  if (/threat|actor|malware|phishing|exploit|attack|campaign|ioc|indicator|c2|command and control/.test(blob)) return "threats";
+  if (/incident|outage|breach|alert|event|timeline|detection|compromise|investigation/.test(blob)) return "threats";
+  if (/finding|vulnerability|cve|exposure|risk|severity|misconfig|weakness|conflict|gap/.test(blob)) return "findings";
+  return "findings";
+};
+
+const cyberGraphFromArtifacts = (sourceItems = [], artifacts = [], connections = [], artifactsById = new Map()) => {
+  const graph = {
+    sources: sourceItems,
+    findings: [],
+    assets: [],
+    threats: [],
+    controls: [],
+    actions: [],
+  };
+
+  for (const artifact of [...artifacts].sort(byScore)) {
+    const bucket = cyberBucketForArtifact(artifact);
+    if (!graph[bucket] || graph[bucket].length >= 3) continue;
+    graph[bucket].push({
+      label: artifactLabel(artifact),
+      detail: artifactDetail(artifact),
+      kind: artifactType(artifact),
+    });
+  }
+
+  const connectionItems = connections
+    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0))
+    .slice(0, 3)
+    .map((connection) => ({
+      label: connectionLabel(connection, artifactsById),
+      detail: connectionDetail(connection),
+      kind: connection.connection_type || connection.connectionType || "connection",
+    }));
+
+  if (connectionItems.length) {
+    graph.findings = [...connectionItems, ...graph.findings].slice(0, 3);
+  }
+
+  return graph;
+};
+
 const stageSnapshot = (context = {}, stage, result = {}) => {
   const sources = context.sources || [];
   const artifacts = context.artifacts || [];
   const connections = context.connections || [];
   const artifactsById = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
-  const sourceItems = sources.slice(0, 3).map((source) => ({
-    label: sourceLabel(source),
-    detail: clampText(source.metadata?.sourceType || source.source_type || source.metadata?.sourceCategory || "source", 80),
-    kind: "source",
-  }));
+  const sourceItems = sources.slice(0, 3).map(sourceLoadItem);
   const entityItems = topArtifacts(artifacts, (artifact) => {
     const type = artifactType(artifact).toLowerCase();
     return /person|account|organization|project|entity|asset/.test(type);
@@ -250,7 +369,8 @@ const stageSnapshot = (context = {}, stage, result = {}) => {
       kind: connection.connection_type || connection.connectionType || "connection",
     }));
 
-  const graph = {
+  const isCyber = context.profileKey === REFINERY_PROFILE_KEYS.CYBER;
+  const graph = isCyber ? cyberGraphFromArtifacts(sourceItems, artifacts, connections, artifactsById) : {
     sources: sourceItems,
     observations: observationItems,
     entities: entityItems,
@@ -265,28 +385,34 @@ const stageSnapshot = (context = {}, stage, result = {}) => {
     connections: connections.length,
   };
 
-  const firstEntity = entityItems[0];
-  const firstObservation = observationItems[0];
+  const firstEntity = entityItems[0] || graph.assets?.[0] || graph.threats?.[0];
+  const firstObservation = observationItems[0] || graph.findings?.[0];
   const firstConnection = connectionItems[0];
   const messages = {
     [NODES.NORMALIZE]: sourceItems.length
-      ? `Prepared ${sources.length} source${sources.length === 1 ? "" : "s"} for refinement, including ${sourceItems.map((item) => item.label).join(", ")}.`
+      ? `Prepared ${sources.length} source${sources.length === 1 ? "" : "s"} for refinement: ${sourceItems.map((item) => item.label).join(", ")}.`
       : `Prepared ${sources.length} source${sources.length === 1 ? "" : "s"} for refinement.`,
-    [NODES.CHUNK]: `Split the material into ${counts.chunks} traceable chunk${counts.chunks === 1 ? "" : "s"} so every claim can point back to a source.`,
-    [NODES.OBSERVE]: firstEntity
-      ? `A ${firstEntity.kind} came up: ${firstEntity.label}. ${firstEntity.detail}`
+    [NODES.CHUNK]: `Split the material into ${counts.chunks} traceable evidence packet${counts.chunks === 1 ? "" : "s"} so every claim can point back to a source.`,
+    [NODES.OBSERVE]: isCyber && firstObservation
+      ? `AI pulled out a security finding: ${firstObservation.label}. ${firstObservation.detail}`
+      : firstEntity
+      ? `AI pulled out a useful ${firstEntity.kind}: ${firstEntity.label}. ${firstEntity.detail}`
       : firstObservation
-        ? `Found an early signal: ${firstObservation.label}. ${firstObservation.detail}`
-        : "Read the sources but did not find strong artifacts yet.",
+        ? `AI found an early source-backed signal: ${firstObservation.label}. ${firstObservation.detail}`
+        : `AI finished a careful first read of ${leadSourcePhrase(sources)}.`,
     [NODES.CONNECT]: firstConnection
-      ? `Connected the dots: ${firstConnection.label}. ${firstConnection.detail}`
-      : "Checked for relationships, but no strong source-backed links were ready yet.",
+      ? `AI connected two pieces of evidence: ${firstConnection.label}. ${firstConnection.detail}`
+      : isCyber
+        ? "AI checked which findings affect assets, which controls reduce risk, and which actions need owners."
+        : "AI checked for relationships and kept only the links that had enough support.",
     [NODES.UNDERSTAND]: firstObservation
-      ? `Built a clearer picture around ${firstObservation.label}.`
-      : "Organized the extracted evidence into a more coherent model.",
+      ? `AI fine-tuned the working model around ${firstObservation.label}.`
+      : "AI organized the extracted evidence into a clearer working model.",
     [NODES.REFLECT]: questionItems[0]
-      ? `Flagged a verification gap: ${questionItems[0].label}.`
-      : "Checked the model for weak links and missing evidence.",
+      ? `AI marked a question for verification: ${questionItems[0].label}.`
+      : isCyber
+        ? "AI checked for duplicate findings, unsupported severity, missing assets, and unresolved evidence gaps."
+        : "AI checked the model for weak links, duplicates, and missing evidence.",
     [NODES.BUILD_MODEL]: `Saved a model with ${counts.artifacts} artifact${counts.artifacts === 1 ? "" : "s"} and ${counts.connections} connection${counts.connections === 1 ? "" : "s"}.`,
     [NODES.GENERATE_VIEWS]: "Prepared the explorable project view from the refined model.",
   };
@@ -296,7 +422,9 @@ const stageSnapshot = (context = {}, stage, result = {}) => {
     payload: {
       counts,
       graph,
-      items: graph.connections.length ? graph.connections : graph.entities.length ? graph.entities : graph.observations.length ? graph.observations : graph.sources,
+      items: isCyber
+        ? graph.findings.length ? graph.findings : graph.assets.length ? graph.assets : graph.threats.length ? graph.threats : graph.controls.length ? graph.controls : graph.actions.length ? graph.actions : graph.sources
+        : graph.connections.length ? graph.connections : graph.entities.length ? graph.entities : graph.observations.length ? graph.observations : graph.sources,
       focus: {
         title: stage === NODES.BUILD_MODEL || stage === NODES.GENERATE_VIEWS ? "Model taking shape" : "Working evidence",
         status: messages[stage] || `${stage} completed`,
@@ -851,7 +979,20 @@ const processProject = async (projectId, options = {}) => {
   status.context.profileKey = options.profileKey || null;
   status.context.intent = options.intent || null;
 
-  await emitRunEvent(status.context, "run_processing", null, "Refinement pipeline started.");
+  if (!status.context.profileKey || !status.context.intent) {
+    const [projectProfiles] = await pool.query(
+      `SELECT p.intent, rp.profile_key AS profileKey
+       FROM projects p
+       LEFT JOIN refinery_profiles rp ON rp.id = p.refinery_profile_id
+       WHERE p.id = ?
+       LIMIT 1`,
+      [projectId]
+    ).catch(() => [[]]);
+    status.context.profileKey = status.context.profileKey || projectProfiles[0]?.profileKey || null;
+    status.context.intent = status.context.intent || projectProfiles[0]?.intent || null;
+  }
+
+  await emitRunEvent(status.context, "run_processing", null, "Refinement started. The refinery is getting the saved sources ready.");
 
   // Load sources
   try {
@@ -886,6 +1027,36 @@ const processProject = async (projectId, options = {}) => {
       await persist.updateProjectStatus(projectId, "failed");
       return status;
     }
+
+    const sourceItems = status.context.sources.map(sourceLoadItem);
+    const totalChars = status.context.sources.reduce((sum, source) => sum + sourceTextLength(source), 0);
+    await emitRunEvent(
+      status.context,
+      "sources_loaded",
+      NODES.INGEST,
+      `Loaded ${status.context.sources.length} included source${status.context.sources.length === 1 ? "" : "s"} with ${totalChars.toLocaleString()} extracted character${totalChars === 1 ? "" : "s"}.`,
+      {
+        counts: {
+          sources: status.context.sources.length,
+          extractedCharacters: totalChars,
+        },
+        graph: {
+          sources: sourceItems.slice(0, 6),
+          observations: [],
+          entities: [],
+          connections: [],
+          questions: [],
+        },
+        items: sourceItems.slice(0, 6),
+        focus: {
+          title: "Source extraction",
+          status: sourceItems.length
+            ? `Captured readable text from ${sourcePhrase(status.context.sources[0])}.`
+            : "Sources were loaded for refinement.",
+          evidence: `${status.context.sources.length} sources, ${totalChars.toLocaleString()} chars`,
+        },
+      }
+    );
   } catch (err) {
     status.errors.push(`Failed to load sources: ${err.message}`);
     await persist.updateRun(status.runId, { status: "failed", errorMessage: err.message });
@@ -907,7 +1078,7 @@ const processProject = async (projectId, options = {}) => {
 
   for (const nodeId of stages) {
     status.currentNode = nodeId;
-    await emitRunEvent(status.context, "stage_started", nodeId, `${nodeId} started`);
+    await emitRunEvent(status.context, "stage_started", nodeId, stageStartedMessage(status.context, nodeId));
 
     try {
       const result = await runNode(nodeId, status.context);
@@ -1032,9 +1203,9 @@ const processProject = async (projectId, options = {}) => {
     hasCriticalErrors ? "run_failed" : "run_completed",
     null,
     hasCriticalErrors
-      ? status.errors.join("; ")
+      ? "Refinement paused after preserving the extracted source work."
       : nonCriticalErrors.length
-        ? `Refinement pipeline completed with non-critical warnings: ${nonCriticalErrors.join("; ")}`
+        ? "Refinement completed and preserved a few items for later review."
         : "Refinement pipeline completed.",
     { modelVersionId: status.context.refineryModelVersionId || null }
   );
