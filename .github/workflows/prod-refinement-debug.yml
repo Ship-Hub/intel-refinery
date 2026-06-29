@@ -51,7 +51,7 @@ jobs:
             echo "::endgroup::"
 
             cd "$API_DIR"
-            SESSION_TOKEN="$(node <<'NODE'
+            SESSION_TOKEN="$(node <<'NODE' | tail -n 1
             require("dotenv").config();
             const db = require("./src/config/db");
             const { createUserSession } = require("./src/auth/services/sessionService");
