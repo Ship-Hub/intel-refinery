@@ -177,6 +177,25 @@ function normalizeArtifact(artifact, fallbackTitle = "Extracted artifact") {
     normalized.content = { value: normalized.content };
   }
 
+  if (!normalized.summary || typeof normalized.summary !== "string" || normalized.summary.trim().length === 0) {
+    const content = normalized.content || {};
+    const candidate =
+      content.summary ||
+      content.description ||
+      content.text ||
+      content.evidence ||
+      content.quote ||
+      (Array.isArray(content.items) ? content.items.slice(0, 3).join(", ") : "");
+    if (candidate) {
+      const text = String(candidate).replace(/\s+/g, " ").trim();
+      normalized.summary = text.length > 220 ? `${text.slice(0, 217)}...` : text;
+    }
+  }
+
+  if (!normalized.summary || normalized.summary.trim().length === 0) {
+    normalized.summary = `${normalized.title} was extracted from the source material.`;
+  }
+
   normalized.confidence = coerceScore(normalized.confidence, 1);
   normalized.importance = coerceScore(normalized.importance, 0.5);
   if (!normalized.firstSeenSourceId || !UUID_RE.test(String(normalized.firstSeenSourceId))) {

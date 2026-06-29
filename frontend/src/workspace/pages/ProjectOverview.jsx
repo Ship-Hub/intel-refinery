@@ -24,6 +24,29 @@ const artifactType = (artifact) => normalizeText(artifact.artifactType || artifa
 const isQuestionLike = (artifact) =>
   ["question", "risk", "knowledge_gap", "limitation", "alternative_explanation"].some((type) => artifactType(artifact).includes(type));
 
+const contentText = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(contentText).filter(Boolean).join(", ");
+  if (typeof value === "object") {
+    return Object.values(value).map(contentText).filter(Boolean).join(" ");
+  }
+  return String(value);
+};
+
+const readableSummary = (artifact) => {
+  const direct = String(artifact.summary || "").trim();
+  if (direct) return direct;
+  const fromContent = contentText(artifact.content).replace(/\s+/g, " ").trim();
+  if (fromContent) return fromContent.length > 220 ? `${fromContent.slice(0, 217)}...` : fromContent;
+  return `${artifact.title || "This item"} was found in the source material, but the run did not save a useful explanation.`;
+};
+
+const isNoiseArtifact = (artifact) => {
+  const blob = normalizeText(`${artifact.title || ""} ${artifact.summary || ""} ${contentText(artifact.content)}`);
+  return /captcha|login page|empty artifact content|inverted connection semantics|over.attribution/.test(blob);
+};
+
 const extractHandle = (artifact) => {
   const blob = `${artifact.title || ""} ${artifact.summary || ""} ${JSON.stringify(artifact.content || {})}`;
   const match = blob.match(/(?:@|user\s+|account\s+)([a-z0-9._]{3,30})/i);
@@ -33,9 +56,16 @@ const extractHandle = (artifact) => {
 const compactArtifact = (artifact) => ({
   id: artifact.id,
   title: artifact.title || "Untitled",
-  summary: artifact.summary || "",
+  summary: readableSummary(artifact),
   type: artifact.artifactType || "artifact",
 });
+
+const relationIsUseful = (connection) => {
+  const type = normalizeText(connection.connectionType || connection.connection_type);
+  const label = normalizeText(`${connection.label || ""} ${connection.explanation || ""}`);
+  return !/(questions|warns about|identifies gap|alternative|possible_association)/.test(type) &&
+    !/(over attribution|inverted connection|empty artifact|captcha)/.test(label);
+};
 
 function Stat({ label, value, hint, icon: Icon }) {
   return (
@@ -113,12 +143,20 @@ export default function ProjectOverview() {
     [artifacts]
   );
   const projectArtifacts = useMemo(
-    () => artifacts.filter((artifact) => artifactType(artifact).includes("project")).slice(0, 6),
+    () => artifacts.filter((artifact) => artifactType(artifact).includes("project") && !isNoiseArtifact(artifact)).slice(0, 6),
+    [artifacts]
+  );
+  const profileSignals = useMemo(
+    () => artifacts
+      .filter((artifact) => !isQuestionLike(artifact) && !isNoiseArtifact(artifact))
+      .filter((artifact) => /experience|education|skill|competenc|claim|language|preference|project|person/.test(artifactType(artifact)))
+      .sort((a, b) => (b.importance || 0) - (a.importance || 0))
+      .slice(0, 8),
     [artifacts]
   );
   const usefulArtifacts = useMemo(
     () => artifacts
-      .filter((artifact) => !isQuestionLike(artifact))
+      .filter((artifact) => !isQuestionLike(artifact) && !isNoiseArtifact(artifact))
       .sort((a, b) => (b.importance || 0) - (a.importance || 0))
       .slice(0, 18),
     [artifacts]
@@ -129,11 +167,14 @@ export default function ProjectOverview() {
   );
   const relationshipHighlights = useMemo(() => {
     const byId = new Map(artifacts.map((artifact) => [artifact.id, compactArtifact(artifact)]));
-    return connections.slice(0, 10).map((connection) => ({
-      ...connection,
-      from: byId.get(connection.fromArtifactId),
-      to: byId.get(connection.toArtifactId),
-    }));
+    return connections
+      .map((connection) => ({
+        ...connection,
+        from: byId.get(connection.fromArtifactId),
+        to: byId.get(connection.toArtifactId),
+      }))
+      .filter((connection) => connection.from && connection.to && relationIsUseful(connection))
+      .slice(0, 10);
   }, [artifacts, connections]);
   const likelyIdentityLine = useMemo(() => {
     const jeff = socialAccounts.find((account) => account.handle === "jeff1da");
@@ -142,11 +183,13 @@ export default function ProjectOverview() {
         [connection.fromArtifactId, connection.toArtifactId].includes(person.id) &&
         [connection.fromArtifactId, connection.toArtifactId].includes(jeff.id)
       );
+      const accountText = normalizeText(`${jeff.title || ""} ${jeff.summary || ""} ${contentText(jeff.content)}`);
+      const directNameEvidence = normalizeText(person.title || "").split(" ").filter((part) => part.length > 2).every((part) => accountText.includes(part));
       return linked
-        ? `The model links ${person.title || "the person profile"} with @jeff1da as an associated Instagram account.`
-        : `The sources mention ${person.title || "the person profile"} and @jeff1da, but this run did not create a direct account link.`;
+        ? `The sources point to ${person.title || "the person profile"} as the main person. @jeff1da is linked to that profile${directNameEvidence ? " because the Instagram profile text includes the same name." : ", but it should still be treated as a lead unless the source text directly proves ownership."}`
+        : `The sources mention ${person.title || "the person profile"} and @jeff1da. This is a possible account lead, not a proven identity link yet.`;
     }
-    if (person) return person.summary || `${person.title} is the primary person identified in the source set.`;
+    if (person) return readableSummary(person) || `${person.title} is the primary person identified in the source set.`;
     return latestVersion?.summary || "The model needs a clearer synthesized answer.";
   }, [latestVersion, person, relationshipHighlights, socialAccounts]);
 
@@ -205,6 +248,15 @@ export default function ProjectOverview() {
                   {person?.title || project?.title || "Refined understanding"}
                 </h2>
                 <p className="mt-3 text-[15px] leading-7 text-ink-2">{likelyIdentityLine}</p>
+                <div className="mt-5 rounded-lg border border-line bg-bg p-4">
+                  <div className="text-[13px] font-semibold text-ink-text">Plain-English read</div>
+                  <ul className="mt-3 grid gap-2 text-[13px] leading-6 text-ink-3">
+                    {person && <li><span className="font-medium text-ink-2">Who:</span> {person.title} is the main person found in the sources.</li>}
+                    {projectArtifacts.length > 0 && <li><span className="font-medium text-ink-2">What they are linked to:</span> {projectArtifacts.slice(0, 4).map((artifact) => artifact.title).join(", ")}.</li>}
+                    {socialAccounts.length > 0 && <li><span className="font-medium text-ink-2">Social accounts mentioned:</span> {socialAccounts.slice(0, 4).map((account) => account.handle ? `@${account.handle}` : account.title).join(", ")}.</li>}
+                    {openQuestions.length > 0 && <li><span className="font-medium text-ink-2">Still unclear:</span> {openQuestions[0].title}.</li>}
+                  </ul>
+                </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                   {socialAccounts.slice(0, 3).map((account) => (
                     <div key={account.id} className="rounded-lg border border-line bg-bg px-3 py-3">
@@ -216,6 +268,21 @@ export default function ProjectOverview() {
                     <div key={artifact.id} className="rounded-lg border border-line bg-bg px-3 py-3">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-5">Project</div>
                       <div className="mt-1 truncate text-[14px] font-semibold text-ink-text">{artifact.title}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-line bg-surface p-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-[16px] font-semibold text-ink-text">Main findings</h2>
+                  <span className="text-[12px] text-ink-5">{profileSignals.length} signals</span>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {profileSignals.slice(0, 6).map((artifact) => (
+                    <div key={artifact.id} className="rounded-lg border border-line bg-bg px-3 py-3">
+                      <div className="text-[12px] font-semibold text-ink-text">{artifact.title}</div>
+                      <p className="mt-1 text-[12px] leading-5 text-ink-4">{readableSummary(artifact)}</p>
                     </div>
                   ))}
                 </div>
@@ -259,7 +326,7 @@ export default function ProjectOverview() {
                     <span className="rounded-md border border-line bg-bg px-2 py-1 text-[11px] text-ink-5">{titleCase(artifact.status || "active")}</span>
                   </div>
                   <h2 className="text-[15px] font-semibold text-ink-text">{artifact.title || "Untitled artifact"}</h2>
-                  <p className="mt-1 text-[13px] leading-6 text-ink-4">{artifact.summary || "No summary captured."}</p>
+                  <p className="mt-1 text-[13px] leading-6 text-ink-4">{readableSummary(artifact)}</p>
                   <div className="mt-3 text-[12px] text-ink-5">
                     Source coverage: <span className="text-ink-3">{artifact.sourceCoverageCount || 0}</span>
                   </div>

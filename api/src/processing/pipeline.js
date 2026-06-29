@@ -107,22 +107,23 @@ const buildFallbackView = (modelData = {}) => {
   const sourceRows = Array.isArray(modelData.sources) ? modelData.sources : [];
   const topArtifacts = artifactRows.slice(0, 12).map((artifact) => ({
     title: artifact.title || "Untitled artifact",
-    body: artifact.summary || artifact.artifact_type || "Extracted from source material."
+    body: artifact.summary || artifact.artifact_type || "Found in the source material."
   }));
+  const summary = modelData.plainEnglishSummary || modelData.summary || buildPlainModelSummary(artifactRows, connectionRows, sourceRows);
 
   const sections = [
     {
-      title: "Model Summary",
-      body: modelData.summary || `Refinery Model with ${artifactRows.length} artifacts and ${connectionRows.length} connections across ${sourceRows.length} sources.`
+      title: "Short answer",
+      body: summary
     },
     {
-      title: "Top Artifacts",
+      title: "What we found",
       body: topArtifacts.length
         ? topArtifacts.map((item) => `${item.title}: ${item.body}`).join("\n")
         : "No artifacts were extracted."
     },
     {
-      title: "Source Coverage",
+      title: "Source notes",
       body: `${sourceRows.length} sources and ${modelData.chunkCount || 0} chunks were included in this refinement.`
     }
   ];
@@ -305,6 +306,56 @@ const stageSnapshot = (context = {}, stage, result = {}) => {
   };
 };
 
+const buildPlainModelSummary = (artifactRows = [], connectionRows = [], sourceRows = []) => {
+  const artifacts = artifactRows.map((artifact) => ({
+    ...artifact,
+    content: parseJson(artifact.content, artifact.content || {}),
+    metadata: parseJson(artifact.metadata, artifact.metadata || {}),
+  }));
+  const person = artifacts.find((artifact) => {
+    const type = artifactType(artifact).toLowerCase();
+    return type.includes("person") && !/instagram user|@\w/i.test(artifact.title || "");
+  });
+  const projects = artifacts
+    .filter((artifact) => artifactType(artifact).toLowerCase().includes("project"))
+    .slice(0, 4)
+    .map((artifact) => artifact.title)
+    .filter(Boolean);
+  const accounts = artifacts
+    .filter((artifact) => /instagram|social media account|@\w/i.test(`${artifact.artifact_type || ""} ${artifact.title || ""} ${artifact.summary || ""}`))
+    .slice(0, 4)
+    .map((artifact) => {
+      const handle = extractSocialHandle(artifact);
+      return handle ? `@${handle}` : artifact.title;
+    })
+    .filter(Boolean);
+  const gaps = artifacts
+    .filter((artifact) => /question|gap|risk|alternative|limitation/i.test(artifact.artifact_type || ""))
+    .slice(0, 2)
+    .map((artifact) => artifact.title)
+    .filter(Boolean);
+
+  const lines = [];
+  if (person) {
+    lines.push(`${person.title} is the main person identified in this source set.`);
+  } else {
+    lines.push(`This model organizes ${sourceRows.length} source${sourceRows.length === 1 ? "" : "s"} into ${artifactRows.length} key item${artifactRows.length === 1 ? "" : "s"}.`);
+  }
+  if (projects.length) {
+    lines.push(`The sources connect ${person?.title || "the subject"} with ${projects.join(", ")}.`);
+  }
+  if (accounts.length) {
+    lines.push(`The social accounts mentioned include ${accounts.join(", ")}. Treat account ownership as verified only when the source text includes direct name evidence.`);
+  }
+  if (connectionRows.length) {
+    lines.push(`${connectionRows.length} relationship${connectionRows.length === 1 ? "" : "s"} were saved between extracted items.`);
+  }
+  if (gaps.length) {
+    lines.push(`Needs checking: ${gaps.join("; ")}.`);
+  }
+  return lines.join(" ");
+};
+
 const truncateText = (value, maxLength = 700) => {
   const text = typeof value === "string" ? value : JSON.stringify(value || {});
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
@@ -314,8 +365,8 @@ const compactArtifactForAi = (artifact) => ({
   id: artifact.id,
   title: artifact.title,
   artifactType: artifact.artifact_type || artifact.artifactType,
-  summary: truncateText(artifact.summary || artifact.description || "", 500),
-  content: truncateText(parseJson(artifact.content, artifact.content || {}), 650),
+  summary: truncateText(artifact.summary || artifact.description || "", 260),
+  content: truncateText(parseJson(artifact.content, artifact.content || {}), 360),
   confidence: artifact.confidence,
   importance: artifact.importance,
   status: artifact.status,
@@ -334,10 +385,10 @@ const compactConnectionForAi = (connection) => ({
 });
 
 const compactArtifactsForAi = (artifacts = []) =>
-  artifacts.slice(0, 60).map(compactArtifactForAi);
+  artifacts.slice(0, 36).map(compactArtifactForAi);
 
 const compactConnectionsForAi = (connections = []) =>
-  connections.slice(0, 120).map(compactConnectionForAi);
+  connections.slice(0, 72).map(compactConnectionForAi);
 
 const normalizeConnections = (connections, artifactIds = []) =>
   (connections || [])
@@ -350,7 +401,16 @@ const normalizeConnections = (connections, artifactIds = []) =>
         connection.toArtifactIndex !== undefined ? artifactIds[connection.toArtifactIndex] : null
       ),
     }))
-    .filter((connection) => connection.fromArtifactId && connection.toArtifactId);
+    .filter((connection) => {
+      const validIds = new Set(artifactIds);
+      return (
+        connection.fromArtifactId &&
+        connection.toArtifactId &&
+        connection.fromArtifactId !== connection.toArtifactId &&
+        validIds.has(connection.fromArtifactId) &&
+        validIds.has(connection.toArtifactId)
+      );
+    });
 
 const normalizeConnectionEvidence = (evidence, connectionIds = []) =>
   (evidence || [])
@@ -384,6 +444,7 @@ const displayType = (artifact) =>
 
 const inferPersonName = (artifact) => {
   const title = String(artifact.title || "");
+  if (/instagram user|@\w/i.test(title)) return null;
   const match = title.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/);
   return match ? match[1] : null;
 };
@@ -419,9 +480,16 @@ const saveInferredConnections = async (projectId, artifacts, options = {}) => {
     });
   };
 
+  const isSocialAccountArtifact = (artifact) => {
+    const type = displayType(artifact);
+    const title = String(artifact.title || "");
+    const blob = artifactBlob(artifact);
+    return type.includes("social media account") || /instagram user|@\w{3,30}/i.test(title) || /instagram\.com|profile username|profile handle/.test(blob);
+  };
+
   const people = artifacts.filter((artifact) => {
     const type = displayType(artifact);
-    return type.includes("person") || /\bperson profile\b/i.test(artifact.title || "");
+    return !isSocialAccountArtifact(artifact) && (type.includes("person") || /\bperson profile\b/i.test(artifact.title || ""));
   });
 
   for (const person of people) {
@@ -436,7 +504,7 @@ const saveInferredConnections = async (projectId, artifacts, options = {}) => {
       const blob = artifactBlob(artifact);
       const sameSource = person.first_seen_source_id && artifact.first_seen_source_id && person.first_seen_source_id === artifact.first_seen_source_id;
 
-      if (type.includes("social media account")) {
+      if (isSocialAccountArtifact(artifact)) {
         const handle = extractSocialHandle(artifact);
         if (handle) {
           const hasDirectNameEvidence =
@@ -460,13 +528,13 @@ const saveInferredConnections = async (projectId, artifacts, options = {}) => {
 
       if (
         blob.includes(personNameText) ||
-        (sameSource && /summary|skill|education|contact|language|industry|work preference|project/.test(type))
+        (sameSource && /summary|skill|education|contact|language|industry|work preference|project|experience/.test(type) && !isSocialAccountArtifact(artifact))
       ) {
         add(
-          person,
           artifact,
-          "described_by",
-          `${artifact.title || "Artifact"} describes ${personName || person.title}`,
+          person,
+          "supports_profile",
+          `${artifact.title || "Artifact"} supports the profile of ${personName || person.title}`,
           `This artifact either names ${personName || person.title} directly or was extracted from the same source as the person profile.`,
           0.76,
           0.7
@@ -510,17 +578,16 @@ const runNode = async (nodeId, context) => {
 
     case NODES.CONNECT:
       return runAiTask("connect", projectId, context, async (result) => {
-        const artifactIds = (context.artifacts || []).map((artifact) => artifact.id);
+        const newArtifacts = result.output?.artifacts || [];
+        const newIds = await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
+        await persist.saveEvidence(projectId, inferredEvidenceForArtifacts(newArtifacts, newIds));
+        const artifactIds = [...(context.artifacts || []).map((artifact) => artifact.id), ...newIds];
         const connections = normalizeConnections(result.output?.connections || [], artifactIds);
         const connIds = await persist.saveConnections(projectId, connections, { taskId: context.currentTaskId });
         context.lastConnectionIds = connIds;
 
         const connEvidence = normalizeConnectionEvidence(result.output?.connectionEvidence || [], connIds);
         await persist.saveConnectionEvidence(projectId, connEvidence);
-
-        const newArtifacts = result.output?.artifacts || [];
-        const newIds = await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
-        await persist.saveEvidence(projectId, inferredEvidenceForArtifacts(newArtifacts, newIds));
         await loadGraphIntoContext(context);
         await saveInferredConnections(projectId, context.artifacts || [], { taskId: context.currentTaskId });
         await loadGraphIntoContext(context);
@@ -734,13 +801,15 @@ const buildModelVersion = async (context) => {
     [projectId]
   );
 
+  const plainSummary = buildPlainModelSummary(artifactRows, connectionRows, sourceRows);
   const modelData = {
     projectId,
     artifactCount: artifactRows.length,
     connectionCount: connectionRows.length,
     sourceCount: sourceRows.length,
     chunkCount: chunkRows.length,
-    summary: `Refinery Model with ${artifactRows.length} artifacts and ${connectionRows.length} connections across ${sourceRows.length} sources.`,
+    summary: plainSummary,
+    plainEnglishSummary: plainSummary,
     sources: sourceRows,
     chunks: chunkRows,
     artifacts: artifactRows,
