@@ -13,14 +13,14 @@ const {
 const buildMetadata =
   ($) => {
     const title =
+      $('meta[property="og:title"]').attr("content") ||
       $("title").first().text().trim() ||
       $("h1").first().text().trim() ||
-      $('meta[property="og:title"]').attr("content") ||
       "";
 
     const description =
-      $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
+      $('meta[name="description"]').attr("content") ||
       "";
 
     return {
@@ -28,6 +28,93 @@ const buildMetadata =
       description,
       url: $('link[rel="canonical"]').attr("href") || ""
     };
+  };
+
+const INSTAGRAM_HANDLE_RE =
+  /@([a-z0-9._]{3,30})/gi;
+
+const extractInstagramHandles =
+  (text) =>
+    [...new Set(
+      [...String(text || "").matchAll(INSTAGRAM_HANDLE_RE)]
+        .map((match) => match[1].toLowerCase())
+        .filter((handle) => !["instagram"].includes(handle))
+    )].slice(0, 6);
+
+const fetchInstagramProfileSummary =
+  async (handle) => {
+    try {
+      const response =
+        await axios.get(`https://www.instagram.com/${handle}/`, {
+          timeout: 10000,
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0"
+          }
+        });
+
+      const $ =
+        cheerio.load(response.data);
+
+      const metadata =
+        buildMetadata($);
+
+      const line = [
+        `Referenced Instagram profile @${handle}`,
+        metadata.title,
+        metadata.description
+      ]
+        .filter(Boolean)
+        .join(": ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const lowerLine =
+        line.toLowerCase();
+
+      if (!lowerLine.includes(`@${handle}`) && !lowerLine.includes(handle)) {
+        return null;
+      }
+
+      return line.length > `Referenced Instagram profile @${handle}`.length ? line : null;
+    } catch {
+      return null;
+    }
+  };
+
+const enrichInstagramReferences =
+  async (url, text) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return text;
+    }
+
+    if (!parsed.hostname.includes("instagram.com")) {
+      return text;
+    }
+
+    const handles =
+      extractInstagramHandles(text);
+
+    if (handles.length === 0) {
+      return text;
+    }
+
+    const profileLines =
+      (await Promise.all(handles.map(fetchInstagramProfileSummary)))
+        .filter(Boolean);
+
+    if (profileLines.length === 0) {
+      return text;
+    }
+
+    return [
+      text,
+      "Referenced Instagram profiles:",
+      ...profileLines
+    ].join("\n\n");
   };
 
 const extractFromUrl =
@@ -66,7 +153,7 @@ const extractFromUrl =
       const metadata =
         buildMetadata($);
 
-      const combinedText = [
+      let combinedText = [
         metadata.title,
         metadata.description,
         bodyText
@@ -75,6 +162,9 @@ const extractFromUrl =
         .join("\n\n")
         .replace(/\s+/g, " ")
         .trim();
+
+      combinedText =
+        await enrichInstagramReferences(url, combinedText);
 
       const MIN_CONTENT_LENGTH =
         300;

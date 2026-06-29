@@ -8,14 +8,14 @@ const {
   const buildMetadata =
     ($) => {
       const title =
+        $('meta[property="og:title"]').attr("content") ||
         $("title").first().text().trim() ||
         $("h1").first().text().trim() ||
-        $('meta[property="og:title"]').attr("content") ||
         "";
 
       const description =
-        $('meta[name="description"]').attr("content") ||
         $('meta[property="og:description"]').attr("content") ||
+        $('meta[name="description"]').attr("content") ||
         "";
 
       return { title, description };

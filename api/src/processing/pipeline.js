@@ -266,6 +266,7 @@ const saveInferredConnections = async (projectId, artifacts, options = {}) => {
   for (const person of people) {
     const personName = inferPersonName(person);
     const personNameText = normalizeText(personName || person.title);
+    const personNameTokens = personNameText.split(" ").filter((token) => token.length > 2);
     if (!personNameText) continue;
 
     for (const artifact of artifacts) {
@@ -277,14 +278,21 @@ const saveInferredConnections = async (projectId, artifacts, options = {}) => {
       if (type.includes("social media account")) {
         const handle = extractSocialHandle(artifact);
         if (handle) {
+          const hasDirectNameEvidence =
+            personNameTokens.length > 0 &&
+            personNameTokens.every((token) => blob.includes(token));
           add(
             person,
             artifact,
-            "associated_account",
-            `${personName || "Person"} is associated with @${handle}`,
-            `The refinement extracted @${handle} as a social account in the same research context as ${personName || person.title}. This should be treated as an evidence-backed association and checked against source lineage.`,
-            handle === "jeff1da" ? 0.82 : 0.68,
-            handle === "jeff1da" ? 0.78 : 0.58
+            hasDirectNameEvidence ? "associated_account" : "possible_association",
+            hasDirectNameEvidence
+              ? `${personName || "Person"} is associated with @${handle}`
+              : `@${handle} may relate to ${personName || person.title}`,
+            hasDirectNameEvidence
+              ? `The social account artifact itself contains the person name ${personName || person.title}, so this is a source-backed account association.`
+              : `The handle appears in the same source set, but the extracted account text does not prove ownership. Treat this as a lead to verify, not a fact.`,
+            hasDirectNameEvidence ? 0.86 : 0.45,
+            hasDirectNameEvidence ? 0.82 : 0.35
           );
         }
       }
