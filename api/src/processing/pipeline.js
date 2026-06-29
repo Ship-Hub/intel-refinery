@@ -203,6 +203,114 @@ const normalizeConnectionEvidence = (evidence, connectionIds = []) =>
     })
     .filter((item) => item.connectionId);
 
+const normalizeText = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9@._\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const artifactBlob = (artifact) =>
+  normalizeText([
+    artifact.title,
+    artifact.summary,
+    typeof artifact.content === "string" ? artifact.content : JSON.stringify(artifact.content || {}),
+    typeof artifact.metadata === "string" ? artifact.metadata : JSON.stringify(artifact.metadata || {}),
+  ].filter(Boolean).join(" "));
+
+const displayType = (artifact) =>
+  normalizeText(artifact.artifact_type || artifact.artifactType || "");
+
+const inferPersonName = (artifact) => {
+  const title = String(artifact.title || "");
+  const match = title.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/);
+  return match ? match[1] : null;
+};
+
+const extractSocialHandle = (artifact) => {
+  const blob = `${artifact.title || ""} ${artifact.summary || ""} ${JSON.stringify(artifact.content || {})}`;
+  const match = blob.match(/(?:@|user\s+|account\s+)([a-z0-9._]{3,30})/i);
+  return match ? match[1].toLowerCase() : null;
+};
+
+const saveInferredConnections = async (projectId, artifacts, options = {}) => {
+  if (!Array.isArray(artifacts) || artifacts.length < 2) return;
+
+  const [existingRows] = await pool.query(
+    "SELECT from_artifact_id, to_artifact_id, connection_type FROM artifact_connections WHERE project_id = ? AND status = 'active'",
+    [projectId]
+  );
+  const existing = new Set(existingRows.map((row) => `${row.from_artifact_id}:${row.to_artifact_id}:${row.connection_type}`));
+  const connections = [];
+  const add = (from, to, connectionType, label, explanation, confidence = 0.72, strength = 0.65) => {
+    if (!from?.id || !to?.id || from.id === to.id) return;
+    const key = `${from.id}:${to.id}:${connectionType}`;
+    if (existing.has(key) || connections.some((item) => `${item.fromArtifactId}:${item.toArtifactId}:${item.connectionType}` === key)) return;
+    connections.push({
+      fromArtifactId: from.id,
+      toArtifactId: to.id,
+      connectionType,
+      label,
+      explanation,
+      confidence,
+      strength,
+      metadata: { inferred: true, inferredAt: new Date().toISOString() }
+    });
+  };
+
+  const people = artifacts.filter((artifact) => {
+    const type = displayType(artifact);
+    return type.includes("person") || /\bperson profile\b/i.test(artifact.title || "");
+  });
+
+  for (const person of people) {
+    const personName = inferPersonName(person);
+    const personNameText = normalizeText(personName || person.title);
+    if (!personNameText) continue;
+
+    for (const artifact of artifacts) {
+      if (artifact.id === person.id) continue;
+      const type = displayType(artifact);
+      const blob = artifactBlob(artifact);
+      const sameSource = person.first_seen_source_id && artifact.first_seen_source_id && person.first_seen_source_id === artifact.first_seen_source_id;
+
+      if (type.includes("social media account")) {
+        const handle = extractSocialHandle(artifact);
+        if (handle) {
+          add(
+            person,
+            artifact,
+            "associated_account",
+            `${personName || "Person"} is associated with @${handle}`,
+            `The refinement extracted @${handle} as a social account in the same research context as ${personName || person.title}. This should be treated as an evidence-backed association and checked against source lineage.`,
+            handle === "jeff1da" ? 0.82 : 0.68,
+            handle === "jeff1da" ? 0.78 : 0.58
+          );
+        }
+      }
+
+      if (
+        blob.includes(personNameText) ||
+        (sameSource && /summary|skill|education|contact|language|industry|work preference|project/.test(type))
+      ) {
+        add(
+          person,
+          artifact,
+          "described_by",
+          `${artifact.title || "Artifact"} describes ${personName || person.title}`,
+          `This artifact either names ${personName || person.title} directly or was extracted from the same source as the person profile.`,
+          0.76,
+          0.7
+        );
+      }
+    }
+  }
+
+  if (connections.length > 0) {
+    await persist.saveConnections(projectId, connections, options);
+  }
+};
+
 const runNode = async (nodeId, context) => {
   const { projectId } = context;
 
@@ -227,6 +335,8 @@ const runNode = async (nodeId, context) => {
         ];
         await persist.saveEvidence(projectId, evidence);
         await loadGraphIntoContext(context);
+        await saveInferredConnections(projectId, context.artifacts || [], { taskId: context.currentTaskId });
+        await loadGraphIntoContext(context);
       });
 
     case NODES.CONNECT:
@@ -242,6 +352,8 @@ const runNode = async (nodeId, context) => {
         const newArtifacts = result.output?.artifacts || [];
         const newIds = await persist.saveArtifacts(projectId, newArtifacts, { taskId: context.currentTaskId });
         await persist.saveEvidence(projectId, inferredEvidenceForArtifacts(newArtifacts, newIds));
+        await loadGraphIntoContext(context);
+        await saveInferredConnections(projectId, context.artifacts || [], { taskId: context.currentTaskId });
         await loadGraphIntoContext(context);
       });
 

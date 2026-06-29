@@ -17,6 +17,26 @@ const titleCase = (value) =>
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const normalizeText = (value) => String(value || "").toLowerCase();
+
+const artifactType = (artifact) => normalizeText(artifact.artifactType || artifact.artifact_type);
+
+const isQuestionLike = (artifact) =>
+  ["question", "risk", "knowledge_gap", "limitation", "alternative_explanation"].some((type) => artifactType(artifact).includes(type));
+
+const extractHandle = (artifact) => {
+  const blob = `${artifact.title || ""} ${artifact.summary || ""} ${JSON.stringify(artifact.content || {})}`;
+  const match = blob.match(/(?:@|user\s+|account\s+)([a-z0-9._]{3,30})/i);
+  return match ? match[1].toLowerCase() : "";
+};
+
+const compactArtifact = (artifact) => ({
+  id: artifact.id,
+  title: artifact.title || "Untitled",
+  summary: artifact.summary || "",
+  type: artifact.artifactType || "artifact",
+});
+
 function Stat({ label, value, hint, icon: Icon }) {
   return (
     <div className="rounded-lg border border-line bg-surface p-4">
@@ -84,6 +104,51 @@ export default function ProjectOverview() {
   }, [artifacts]);
 
   const latestVersion = versions[0];
+  const person = useMemo(
+    () => artifacts.find((artifact) => artifactType(artifact).includes("person")) || artifacts.find((artifact) => /jephtah oyelabi/i.test(`${artifact.title || ""} ${artifact.summary || ""}`)),
+    [artifacts]
+  );
+  const socialAccounts = useMemo(
+    () => artifacts.filter((artifact) => artifactType(artifact).includes("social media account")).map((artifact) => ({ ...artifact, handle: extractHandle(artifact) })),
+    [artifacts]
+  );
+  const projectArtifacts = useMemo(
+    () => artifacts.filter((artifact) => artifactType(artifact).includes("project")).slice(0, 6),
+    [artifacts]
+  );
+  const usefulArtifacts = useMemo(
+    () => artifacts
+      .filter((artifact) => !isQuestionLike(artifact))
+      .sort((a, b) => (b.importance || 0) - (a.importance || 0))
+      .slice(0, 18),
+    [artifacts]
+  );
+  const openQuestions = useMemo(
+    () => artifacts.filter(isQuestionLike).slice(0, 8),
+    [artifacts]
+  );
+  const relationshipHighlights = useMemo(() => {
+    const byId = new Map(artifacts.map((artifact) => [artifact.id, compactArtifact(artifact)]));
+    return connections.slice(0, 10).map((connection) => ({
+      ...connection,
+      from: byId.get(connection.fromArtifactId),
+      to: byId.get(connection.toArtifactId),
+    }));
+  }, [artifacts, connections]);
+  const likelyIdentityLine = useMemo(() => {
+    const jeff = socialAccounts.find((account) => account.handle === "jeff1da");
+    if (person && jeff) {
+      const linked = relationshipHighlights.some((connection) =>
+        [connection.fromArtifactId, connection.toArtifactId].includes(person.id) &&
+        [connection.fromArtifactId, connection.toArtifactId].includes(jeff.id)
+      );
+      return linked
+        ? `The model links ${person.title || "the person profile"} with @jeff1da as an associated Instagram account.`
+        : `The sources mention ${person.title || "the person profile"} and @jeff1da, but this run did not create a direct account link.`;
+    }
+    if (person) return person.summary || `${person.title} is the primary person identified in the source set.`;
+    return latestVersion?.summary || "The model needs a clearer synthesized answer.";
+  }, [latestVersion, person, relationshipHighlights, socialAccounts]);
 
   return (
     <div className="h-screen overflow-y-auto bg-bg text-ink-2">
@@ -132,8 +197,52 @@ export default function ProjectOverview() {
             </button>
           </div>
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
             <main className="grid content-start gap-3">
+              <section className="rounded-lg border border-cyan/25 bg-surface p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan">Synthesized answer</div>
+                <h2 className="mt-2 text-[22px] font-semibold leading-tight text-ink-text">
+                  {person?.title || project?.title || "Refined understanding"}
+                </h2>
+                <p className="mt-3 text-[15px] leading-7 text-ink-2">{likelyIdentityLine}</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {socialAccounts.slice(0, 3).map((account) => (
+                    <div key={account.id} className="rounded-lg border border-line bg-bg px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-5">Account</div>
+                      <div className="mt-1 truncate text-[14px] font-semibold text-ink-text">{account.handle ? `@${account.handle}` : account.title}</div>
+                    </div>
+                  ))}
+                  {projectArtifacts.slice(0, 3).map((artifact) => (
+                    <div key={artifact.id} className="rounded-lg border border-line bg-bg px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-5">Project</div>
+                      <div className="mt-1 truncate text-[14px] font-semibold text-ink-text">{artifact.title}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-line bg-surface p-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-[16px] font-semibold text-ink-text">Connected dots</h2>
+                  <span className="text-[12px] text-ink-5">{connections.length} relationships</span>
+                </div>
+                {relationshipHighlights.length === 0 ? (
+                  <p className="text-[13px] leading-6 text-amber-100">No relationships were saved for this run. The model should be rerun after the latest backend fix so entity links are inferred and persisted.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {relationshipHighlights.map((connection) => (
+                        <div key={connection.id} className="rounded-lg border border-line bg-bg px-3 py-3">
+                          <div className="text-[13px] font-semibold text-ink-text">
+                          {connection.from?.title || "Artifact"}{" -> "}{connection.to?.title || "Artifact"}
+                        </div>
+                        <div className="mt-1 text-[12px] text-cyan">{titleCase(connection.connectionType)}</div>
+                        {connection.explanation && <p className="mt-2 text-[12px] leading-5 text-ink-4">{connection.explanation}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               <label className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-ink-4">
                 <Search className="h-4 w-4 text-ink-5" />
                 <input
@@ -143,7 +252,7 @@ export default function ProjectOverview() {
                   className="w-full bg-transparent text-ink-2 outline-none placeholder:text-ink-5"
                 />
               </label>
-              {filteredArtifacts.map((artifact) => (
+              {(query ? filteredArtifacts : usefulArtifacts).map((artifact) => (
                 <article key={artifact.id} className="rounded-lg border border-line bg-surface p-4">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="rounded-md border border-line bg-bg px-2 py-1 text-[11px] font-medium text-ink-4">{titleCase(artifact.artifactType)}</span>
@@ -158,6 +267,19 @@ export default function ProjectOverview() {
               ))}
             </main>
             <aside className="grid content-start gap-4">
+              <section className="rounded-lg border border-line bg-surface p-4">
+                <h2 className="text-[14px] font-semibold text-ink-text">Needs verification</h2>
+                <div className="mt-3 grid gap-2">
+                  {openQuestions.length === 0 ? (
+                    <div className="text-[12px] leading-5 text-ink-4">No major unresolved questions were extracted.</div>
+                  ) : openQuestions.map((artifact) => (
+                    <div key={artifact.id} className="rounded-md border border-line bg-bg px-3 py-2">
+                      <div className="text-[12px] font-medium text-ink-2">{artifact.title}</div>
+                      {artifact.summary && <div className="mt-1 text-[11px] leading-5 text-ink-5">{artifact.summary}</div>}
+                    </div>
+                  ))}
+                </div>
+              </section>
               <section className="rounded-lg border border-line bg-surface p-4">
                 <h2 className="text-[14px] font-semibold text-ink-text">Artifact types</h2>
                 <div className="mt-3 grid gap-2">
