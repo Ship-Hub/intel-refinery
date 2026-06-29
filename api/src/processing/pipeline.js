@@ -193,12 +193,14 @@ const normalizeConnections = (connections, artifactIds = []) =>
 
 const normalizeConnectionEvidence = (evidence, connectionIds = []) =>
   (evidence || [])
-    .map((item) => ({
-      ...item,
-      connectionId: item.connectionId || (
-        item.connectionIndex !== undefined ? connectionIds[item.connectionIndex] : null
-      ),
-    }))
+    .map((item) => {
+      const validConnectionIds = new Set(connectionIds);
+      const indexedId = item.connectionIndex !== undefined ? connectionIds[item.connectionIndex] : null;
+      return {
+        ...item,
+        connectionId: indexedId || (validConnectionIds.has(item.connectionId) ? item.connectionId : null),
+      };
+    })
     .filter((item) => item.connectionId);
 
 const runNode = async (nodeId, context) => {
