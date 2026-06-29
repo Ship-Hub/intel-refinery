@@ -77,7 +77,7 @@ const env =
       OPENROUTER_TIMEOUT_MS:
         num({
           default:
-            120000
+            240000
         }),
 
       OPENROUTER_REFERER:

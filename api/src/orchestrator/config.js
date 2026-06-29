@@ -111,7 +111,7 @@ for (const [taskType, config] of Object.entries(taskRouting)) {
 const providerDefaults = {
   openrouter: {
     baseURL: "https://openrouter.ai/api/v1",
-    timeoutMs: parseInt(getEnv("OPENROUTER_TIMEOUT_MS", "120000")),
+    timeoutMs: parseInt(getEnv("OPENROUTER_TIMEOUT_MS", "240000")),
     apiKey: getEnv("OPENROUTER_API_KEY", ""),
     referer: getEnv("OPENROUTER_REFERER", "https://refinery.local"),
     title: getEnv("OPENROUTER_TITLE", "Intel Refinery")

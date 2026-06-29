@@ -1,7 +1,7 @@
 // AI Model Orchestrator — executes AI tasks through configured providers
 // All AI operations flow through this module
 
-const { getTaskConfig } = require("./config");
+const { getProviderConfig, getTaskConfig } = require("./config");
 const openRouter = require("./openRouterProvider");
 const geminiProvider = require("../ai/providers/gemini");
 const groqProvider = require("../ai/providers/groq");
@@ -86,7 +86,7 @@ const executeTask = async (taskType, input, dbContext = null) => {
       temperature: taskConfig.temperature,
       maxTokens: taskConfig.maxTokens,
       jsonMode: taskConfig.jsonMode,
-      timeoutMs: taskConfig.timeoutMs
+      timeoutMs: taskConfig.timeoutMs || getProviderConfig(providerName).timeoutMs
     });
 
     logAiProviderResult({
